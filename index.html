@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" class="scroll-smooth">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0" />
+<title>香港巴士實時 ETA｜附近站自動載入</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = { darkMode: 'class' }
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+<style>
+:root {
+  --fs-eta: clamp(1.75rem, 6vw, 3rem);
+  --tap: 44px;
+}
+::-webkit-scrollbar { width:6px }
+::-webkit-scrollbar-thumb { background:#94a3b8; border-radius:3px }
+html.dark ::-webkit-scrollbar-thumb { background:#475569 }
+
+.eta-main { font-size: var(--fs-eta); line-height:1.1 }
+.tap-safe { min-height:var(--tap); min-width:var(--tap); }
+
+@keyframes blink {
+  0%,100%{opacity:1}
+  50%{opacity:.35}
+}
+.blink-warning { animation: blink .6s infinite; }
+
+.arrived-status {
+  background: linear-gradient(135deg,#39FF14,#00CC00);
+  box-shadow: 0 0 10px rgba(57,255,20,.55);
+}
+</style>
+</head>
+
+<body class="bg-slate-50 font-sans text-slate-800 dark:bg-slate-900 dark:text-slate-100">
+
+<!-- ===== 手機底部操作列 ===== -->
+<nav id="mobile-bar"
+     class="fixed bottom-0 left-0 right-0 z-50
+            bg-white/90 dark:bg-slate-900/90 backdrop-blur-md
+            border-t border-slate-200 dark:border-slate-700
+            md:hidden
+            flex justify-around items-center px-3 py-2">
+  <button id="mb-locate" class="tap-safe flex flex-col items-center text-xs">
+    <i class="fa-solid fa-location-crosshairs text-lg"></i>
+    <span data-lang="nearby_btn">定位</span>
+  </button>
+  <button id="mb-refresh" class="tap-safe flex flex-col items-center text-xs">
+    <i class="fa-solid fa-rotate-right text-lg"></i>
+    <span data-lang="refresh_btn">刷新</span>
+  </button>
+  <button id="mb-search" class="tap-safe flex flex-col items-center text-xs">
+    <i class="fa-solid fa-magnifying-glass text-lg"></i>
+    <span data-lang="search">搜尋</span>
+  </button>
+</nav>
+
+<!-- ===== 主內容 ===== -->
+<main class="max-w-7xl mx-auto p-4 grid grid-cols-1 md:grid-cols-4 gap-6 pb-24 md:pb-6">
+
+<!-- 左側：篩選 -->
+<section class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-5 h-fit">
+  <div class="flex justify-between items-center mb-4">
+    <h2 class="font-bold flex items-center gap-2">
+      <i class="fa-solid fa-sliders text-blue-500"></i>
+      <span data-lang="filter">路線篩選</span>
+    </h2>
+    <select id="lang-select" class="text-xs font-mono bg-slate-100 dark:bg-slate-700 border rounded px-2 py-1">
+      <option value="zh-Hant">繁中</option>
+      <option value="zh-Hans">簡中</option>
+      <option value="en">EN</option>
+    </select>
+  </div>
+
+  <div class="space-y-4">
+    <div>
+      <label class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" data-lang="company">巴士公司</label>
+      <select id="company-select" class="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border rounded-xl">
+        <option value="KMB">九巴 KMB</option>
+        <option value="CTB">城巴 CTB</option>
+        <option value="LWB">龍運 LWB</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" data-lang="route">輸入路線</label>
+      <div class="relative">
+        <input id="route-input" value="1A" class="w-full p-2.5 pr-10 bg-slate-50 dark:bg-slate-700 border rounded-xl font-bold uppercase" />
+        <button id="search-btn" class="absolute right-2 top-2 tap-safe bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center justify-center">
+          <i class="fa-solid fa-magnifying-glass text-sm"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="direction-container" class="grid gap-2">
+      <button id="dir-outbound" data-dir="outbound" class="dir-btn py-2.5 px-3 bg-blue-600 text-white rounded-xl font-medium flex justify-between items-center">
+        <span data-lang="outbound">去程</span>
+        <i class="fa-solid fa-circle-chevron-right text-xs opacity-70"></i>
+      </button>
+      <button id="dir-inbound" data-dir="inbound" class="dir-btn py-2.5 px-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 flex justify-between items-center">
+        <span data-lang="inbound">回程</span>
+        <i class="fa-solid fa-circle-chevron-right text-xs opacity-30"></i>
+      </button>
+    </div>
+
+    <div class="pt-2">
+      <button id="nearby-btn" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium flex justify-center items-center gap-2">
+        <i class="fa-solid fa-location-crosshairs"></i>
+        <span data-lang="nearby_btn">附近站路線</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- 中間：ETA / 時間表 -->
+<section class="md:col-span-2 flex flex-col gap-4">
+  <div id="route-banner" class="bg-gradient-to-r from-red-600 to-red-700 text-white p-5 rounded-2xl flex justify-between items-center">
+    <div>
+      <div class="flex items-center gap-3">
+        <span id="info-route" class="text-3xl font-black bg-white text-red-600 px-3 py-0.5 rounded-xl">1A</span>
+        <h3 id="info-direction" class="text-lg font-bold truncate">載入中...</h3>
+      </div>
+      <p class="text-xs opacity-80 mt-2"><i class="fa-solid fa-circle-info"></i> 政府開放 API + 時間表</p>
+    </div>
+    <span id="company-badge" class="bg-white/20 text-xs font-bold px-3 py-1.5 rounded-full backdrop-blur-sm">九巴 KMB</span>
+  </div>
+
+  <div class="flex bg-slate-200 dark:bg-slate-700 p-1 rounded-xl">
+    <button id="tab-btn-eta" class="flex-1 py-2.5 text-sm font-bold rounded-lg bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400">
+      <i class="fa-solid fa-stopwatch"></i> <span data-lang="eta_tab">實時到站</span>
+    </button>
+    <button id="tab-btn-timetable" class="flex-1 py-2.5 text-sm font-medium rounded-lg text-slate-600 dark:text-slate-400">
+      <i class="fa-solid fa-calendar-days"></i> <span data-lang="tt_tab">班次時間</span>
+    </button>
+  </div>
+
+  <div id="panel-eta" class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex-grow">
+    <div id="stops-container" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[55vh] overflow-y-auto"></div>
+  </div>
+
+  <div id="panel-timetable" class="hidden bg-white dark:bg-slate-800 rounded-2xl p-5 overflow-y-auto max-h-[55vh]">
+    <div id="timetable-container" class="space-y-6"></div>
+  </div>
+</section>
+
+<!-- 右側：大屏資訊欄 -->
+<section id="side-panel"
+         class="hidden md:flex flex-col gap-4
+                bg-white dark:bg-slate-800
+                rounded-2xl border border-slate-100 dark:border-slate-700
+                p-5 h-fit">
+  <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider" data-lang="nearby_title">最近站</h3>
+  <div id="side-nearby" class="text-sm text-slate-700 dark:text-slate-300">
+    --
+  </div>
+</section>
+
+</main>
+
+<script>
+/* ===================== 翻譯 ===================== */
+const translations = {
+"zh-Hant":{
+filter:"路線篩選",company:"巴士公司",route:"輸入路線",direction:"行車方向",
+outbound:"去程",inbound:"回程",refresh_btn:"刷新",
+eta_tab:"實時到站",tt_tab:"班次時間",
+nearby_btn:"附近站路線",nearby_title:"最近站",
+search:"搜尋",loading:"載入中...",
+auto_loaded:"已自動載入最近路線"
+},
+"zh-Hans":{
+filter:"路线筛选",company:"巴士公司",route:"输入路线",direction:"行车方向",
+outbound:"去程",inbound:"回程",refresh_btn:"刷新",
+eta_tab:"实时到站",tt_tab:"班次时间",
+nearby_btn:"附近站路线",nearby_title:"最近站",
+search:"搜索",loading:"载入中...",
+auto_loaded:"已自动加载最近路线"
+},
+"en":{
+filter:"Filter",company:"Operator",route:"Route",direction:"Direction",
+outbound:"Outbound",inbound:"Inbound",refresh_btn:"Refresh",
+eta_tab:"Live ETA",tt_tab:"Timetable",
+nearby_btn:"Nearby",nearby_title:"Nearest Stop",
+search:"Search",loading:"Loading...",
+auto_loaded:"Auto-loaded nearest route"
+}
+};
+let currentLang='zh-Hant';
+function getText(k){return translations[currentLang][k]||k;}
+
+/* ===================== 工具 ===================== */
+const $ = id=>document.getElementById(id);
+function haversineM(a,b,c,d){
+const R=6371000,p=Math.PI/180;
+return 2*R*Math.asin(Math.sqrt(
+Math.sin((d-b)*p/2)**2+
+Math.cos(b*p)*Math.cos(d*p)*Math.sin((c-a)*p/2)**2
+));
+}
+function getUserLoc(){
+return new Promise((r,j)=>navigator.geolocation?
+navigator.geolocation.getCurrentPosition(p=>r({lat:p.coords.latitude,lon:p.coords.longitude}),j,{timeout:8000}):
+j());
+}
+
+/* ===================== 站點 & ETA ===================== */
+let stopCache={};
+async function getAllStops(co){
+if(stopCache[co])return stopCache[co];
+const url=co==='CTB'?'https://rt.data.gov.hk/v1/transport/citybus-nwfb/stop':
+'https://data.etabus.gov.hk/v1/transport/kmb/stop';
+const r=await fetch(url),j=await r.json();
+stopCache[co]=j.data.filter(s=>s.lat&&s.long);
+return stopCache[co];
+}
+async function findNearestStop(co,lat,lon){
+const stops=await getAllStops(co);
+let best=null,dmin=Infinity;
+stops.forEach(s=>{
+const d=haversineM(lon,lat,s.long,s.lat);
+if(d<dmin){dmin=d;best=s;}
+});
+return {...best,distM:Math.round(dmin)};
+}
+async function pickBestRoute(stop,co){
+const enc=encodeURIComponent(stop.stop);
+const url=co==='CTB'?
+`https://rt.data.gov.hk/v1/transport/citybus-nwfb/eta/CTB/${enc}`:
+`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${enc}`;
+const r=await fetch(url),j=await r.json();
+let best=null;
+(j.data||[]).forEach(i=>{
+if(!i.eta||!i.route)return;
+const m=Math.ceil((new Date(i.eta)-Date.now())/60000);
+if(m<0)return;
+if(!best||m<best.mins)best={route:i.route,co:i.co||co,mins:m,dest:i.dest_tc};
+});
+return best;
+}
+
+/* ===================== 狀態 ===================== */
+let currentCompany='KMB',currentRoute='1A',currentDirection='outbound';
+
+/* ===================== UI ===================== */
+function updateBanner(){
+$('info-route').textContent=currentRoute;
+$('company-badge').textContent=
+currentCompany==='KMB'?'九巴 KMB':currentCompany==='CTB'?'城巴 CTB':'龍運 LWB';
+}
+function renderSimpleETA(){
+const c=$('stops-container');
+c.innerHTML='<div class="text-center py-12 text-slate-400">'+getText('loading')+'</div>';
+}
+async function autoLoadNearestRoute(){
+try{
+const loc=await getUserLoc();
+const stop=await findNearestStop(currentCompany,loc.lat,loc.lon);
+const best=await pickBestRoute(stop,currentCompany);
+if(!best)throw'';
+
+currentCompany=best.co;
+currentRoute=best.route;
+currentDirection='outbound';
+$('route-input').value=best.route;
+$('company-select').value=best.co;
+updateBanner();
+$('info-direction').textContent=
+`${getText('auto_loaded')}｜${stop.distM}m｜${best.dest}`;
+
+$('side-nearby').innerHTML=
+`<div class="font-bold">${stop.name_tc}</div>
+<div class="text-xs text-slate-400">📍 ${stop.distM}m</div>
+<div class="mt-2 inline-block bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded">${best.route}</div>`;
+
+renderSimpleETA();
+}catch{
+$('info-direction').textContent='定位失敗，請手動搜尋';
+}
+}
+
+/* ===================== Init ===================== */
+window.onload=()=>{
+document.querySelectorAll('[data-lang]').forEach(e=>e.textContent=getText(e.dataset.lang));
+$('route-input').onkeydown=e=>{if(e.key==='Enter')autoLoadNearestRoute();};
+$('search-btn').onclick=autoLoadNearestRoute;
+$('mb-locate').onclick=autoLoadNearestRoute;
+$('mb-refresh').onclick=()=>location.reload();
+$('mb-search').onclick=()=>$('route-input').focus();
+$('nearby-btn').onclick=autoLoadNearestRoute;
+$('lang-select').onchange=e=>{
+currentLang=e.target.value;
+document.querySelectorAll('[data-lang]').forEach(x=>x.textContent=getText(x.dataset.lang));
+};
+autoLoadNearestRoute();
+};
+</script>
+</body>
+</html>
