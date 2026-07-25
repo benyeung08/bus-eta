@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>香港巴士與小巴實時 ETA 系統 | Hong Kong Transit System</title>
+    <title>香港巴士實時 ETA 系統 | Hong Kong Bus ETA System</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -84,19 +84,18 @@
             
             <div class="space-y-4">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 dark:text-slate-400" data-lang="company">公共交通公司</label>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 dark:text-slate-400" data-lang="company">巴士公司</label>
                     <select id="company-select" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium transition dark:bg-slate-700 dark:border-slate-600 dark:text-white">
                         <option value="KMB">九巴 KMB</option>
                         <option value="CTB">城巴 CTB</option>
                         <option value="LWB">龍運 LWB</option>
-                        <option value="GMB">專線小巴 GMB</option>
                     </select>
                 </div>
 
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 dark:text-slate-400" data-lang="route">輸入路線</label>
                     <div class="relative">
-                        <input type="text" id="route-input" value="1A" placeholder="e.g. 1A, 16M, 403A" class="w-full p-2.5 pl-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-bold tracking-wide transition dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                        <input type="text" id="route-input" value="1A" placeholder="e.g. 1A, 720, S1" class="w-full p-2.5 pl-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-bold tracking-wide transition dark:bg-slate-700 dark:border-slate-600 dark:text-white">
                         <button type="button" id="search-btn" aria-label="Search Route" class="absolute right-2 top-2 w-8 h-8 rounded-lg bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition shadow-sm">
                             <i class="fa-solid fa-magnifying-glass text-sm"></i>
                         </button>
@@ -150,7 +149,7 @@
             <div id="panel-eta" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-grow flex flex-col dark:bg-slate-800 dark:border-slate-700">
                 <div class="bg-slate-50 px-4 py-3 border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider grid grid-cols-12 dark:bg-slate-700/50 dark:text-slate-400 dark:border-slate-700">
                     <div class="col-span-1 text-center" data-lang="col_seq">#</div>
-                    <div class="col-span-6" data-lang="col_stop">巴士/小巴分站名稱</div>
+                    <div class="col-span-6" data-lang="col_stop">巴士分站名稱</div>
                     <div class="col-span-5 text-right" data-lang="col_time">預計到站時間 / 班次時刻</div>
                 </div>
                 <div id="stops-container" class="divide-y divide-slate-100 max-h-[55vh] overflow-y-auto flex-grow dark:divide-slate-700">
@@ -186,12 +185,12 @@
     <script>
         const translations = {
             "zh-Hant": {
-                filter: "路線篩選", company: "公共交通公司", route: "輸入路線", direction: "行車方向",
+                filter: "路線篩選", company: "巴士公司", route: "輸入路線", direction: "行車方向",
                 outbound: "去程", inbound: "回程", refresh: "秒級即時倒數與背景同步",
                 refresh_btn: "刷新數據",
                 source: "結合政府開放 API 與常規班次時間表",
                 eta_tab: "實時到站時間", tt_tab: "班次時間表",
-                col_seq: "#", col_stop: "巴士/小巴分站名稱", col_time: "預計到站時間 / 班次時刻",
+                col_seq: "#", col_stop: "巴士分站名稱", col_time: "預計到站時間 / 班次時刻",
                 loading: "載入中...", no_service: "無服務", not_found: "查無此路線", no_data: "暫無班次數據",
                 search_error: "找不到該路線資料，請檢查公司與編號。", no_schedule: "無法加載時間表",
                 to: "往", loop: "循環線", loop_point: "循環點",
@@ -208,12 +207,12 @@
                 }
             },
             "zh-Hans": {
-                filter: "路线筛选", company: "公共交通公司", route: "输入路线", direction: "行车方向",
+                filter: "路线筛选", company: "巴士公司", route: "输入路线", direction: "行车方向",
                 outbound: "去程", inbound: "回程", refresh: "秒级实时倒数与背景同步",
                 refresh_btn: "刷新数据",
                 source: "结合政府开放 API 与常规班次时间表",
                 eta_tab: "实时到站时间", tt_tab: "班次时间表",
-                col_seq: "#", col_stop: "巴士/小巴分站名称", col_time: "预计到站时间 / 班次时刻",
+                col_seq: "#", col_stop: "巴士分站名称", col_time: "预计到站时间 / 班次时刻",
                 loading: "载入中...", no_service: "无服务", not_found: "查无此路线", no_data: "暂无比次数据",
                 search_error: "找不到该路线资料，请检查公司与编号。", no_schedule: "无法加载时间表",
                 to: "往", loop: "循环线", loop_point: "循环点",
@@ -235,7 +234,7 @@
                 refresh_btn: "Refresh",
                 source: "Powered by Gov Open API & Schedule Data",
                 eta_tab: "Real-time ETA", tt_tab: "Timetable",
-                col_seq: "#", col_stop: "Bus/Minibus Stop Name", col_time: "ETA / Schedule",
+                col_seq: "#", col_stop: "Bus Stop Name", col_time: "ETA / Schedule",
                 loading: "Loading...", no_service: "No Service", not_found: "Route Not Found", no_data: "No Data",
                 search_error: "Route not found. Please check operator and route number.", no_schedule: "Timetable unavailable",
                 to: "To", loop: "Circular Route", loop_point: "Loop Point",
@@ -288,12 +287,6 @@
                     "outbound": [{ day: "daily", periods: [{ t: "05:20 - 06:30", f: "15 - 20 min" }, { t: "06:30 - 08:30", f: "10 - 12 min" }, { t: "08:30 - 22:00", f: "12 - 15 min" }, { t: "22:00 - 00:00", f: "20 min" }] }],
                     "inbound": [{ day: "daily", periods: [{ t: "05:30 - 07:30", f: "20 min" }, { t: "07:30 - 17:30", f: "12 - 15 min" }, { t: "17:30 - 19:30", f: "8 - 12 min" }, { t: "19:30 - 00:00", f: "15 - 20 min" }] }]
                 }
-            },
-            "GMB": {
-                "16M": {
-                    "outbound": [{ day: "daily", periods: [{ t: "06:00 - 09:00", f: "5 - 8 min" }, { t: "09:00 - 23:30", f: "8 - 12 min" }] }],
-                    "inbound": [{ day: "daily", periods: [{ t: "06:00 - 09:00", f: "5 - 8 min" }, { t: "09:00 - 23:30", f: "8 - 12 min" }] }]
-                }
             }
         };
 
@@ -319,8 +312,7 @@
         const brandStyles = {
             KMB: { bg: "from-red-600 to-red-700 text-white", text: "text-red-600", label: "九巴 KMB" },
             CTB: { bg: "from-amber-400 to-amber-500 text-slate-900", text: "text-amber-600", label: "城巴 CTB" },
-            LWB: { bg: "from-orange-500 to-orange-600 text-white", text: "text-orange-600", label: "龍運 LWB" },
-            GMB: { bg: "from-emerald-600 to-emerald-700 text-white", text: "text-emerald-600", label: "專線小巴 GMB" }
+            LWB: { bg: "from-orange-500 to-orange-600 text-white", text: "text-orange-600", label: "龍運 LWB" }
         };
 
         const langSelect = document.getElementById('lang-select');
@@ -420,10 +412,7 @@
 
             companySelect.addEventListener('change', (e) => {
                 currentCompany = e.target.value;
-                if (currentCompany === "KMB") routeInput.value = "1A";
-                else if (currentCompany === "CTB") routeInput.value = "720";
-                else if (currentCompany === "LWB") routeInput.value = "E33";
-                else if (currentCompany === "GMB") routeInput.value = "16M";
+                routeInput.value = currentCompany === "KMB" ? "1A" : currentCompany === "CTB" ? "720" : "E33";
                 updateBannerStyle();
             });
 
@@ -528,8 +517,8 @@
             document.querySelectorAll('[data-lang]').forEach(el => {
                 el.textContent = getText(el.getAttribute('data-lang'));
             });
-            document.title = `${getText('filter')} | Hong Kong Transit System`;
-            routeInput.placeholder = currentLang === 'en' ? "e.g. 1A, 16M, 403A" : "例如: 1A, 16M, 403A";
+            document.title = `${getText('filter')} | Hong Kong Bus ETA`;
+            routeInput.placeholder = currentLang === 'en' ? "e.g. 1A, 720, S1" : "例如: 1A, 720, S1 (循環線)";
             if (currentTab === 'timetable') renderTimetable();
         }
 
@@ -655,69 +644,6 @@
             return etaObj.rmk_tc || '';
         }
 
-        /* ---------------- API 數據抓取 logic 修正 ---------------- */
-        async function fetchGmbRouteStops(route) {
-            try {
-                const res = await fetch(`https://data.etagmb.gov.hk/route/${encodeURIComponent(route)}`);
-                if (!res.ok) return { outbound: [], inbound: [] };
-                const resData = await res.json();
-                
-                if (!resData.data || resData.data.length === 0) return { outbound: [], inbound: [] };
-                
-                // 修復：如果多地區有相同路線，優先取包含資料的區域項目
-                const routeInfo = resData.data[0];
-                const routeId = routeInfo.route_id;
-
-                const detailRes = await fetch(`https://data.etagmb.gov.hk/route-stop/${routeId}`);
-                if (!detailRes.ok) return { outbound: [], inbound: [] };
-                const detailData = await detailRes.json();
-                
-                const directions = detailData.data || [];
-                const outboundList = (directions.find(d => d.route_seq === 1) || {}).stops || [];
-                const inboundList = (directions.find(d => d.route_seq === 2) || {}).stops || [];
-
-                const mapStops = (list) => list.map(s => ({
-                    stop: String(s.stop_id),
-                    seq: s.stop_seq,
-                    name_tc: s.name_tc,
-                    name_sc: s.name_sc,
-                    name_en: s.name_en,
-                    route_id: routeId,
-                    route_seq: s.route_seq || 1
-                }));
-
-                return {
-                    outbound: mapStops(outboundList),
-                    inbound: mapStops(inboundList)
-                };
-            } catch (err) {
-                console.error("GMB Fetch Error:", err);
-                return { outbound: [], inbound: [] };
-            }
-        }
-
-        async function fetchGmbStopETA(stopObj) {
-            try {
-                if (!stopObj || !stopObj.route_id || !stopObj.stop) return [];
-                const routeId = stopObj.route_id;
-                const routeSeq = stopObj.route_seq || 1;
-                const stopSeq = stopObj.seq;
-
-                const res = await fetch(`https://data.etagmb.gov.hk/eta/route-stop/${routeId}/${routeSeq}/${stopSeq}`);
-                if (!res.ok) return [];
-                const data = await res.json();
-                
-                return (data.data || []).map(item => ({
-                    eta: item.timestamp,
-                    rmk_tc: item.remarks_tc || (item.wheelchair ? "復康車輛" : ""),
-                    rmk_sc: item.remarks_sc || (item.wheelchair ? "复康车辆" : ""),
-                    rmk_en: item.remarks_en || (item.wheelchair ? "Wheelchair Accessible" : "")
-                }));
-            } catch {
-                return [];
-            }
-        }
-
         async function fetchKmbRouteStops(route) {
             try {
                 const encoded = encodeURIComponent(route);
@@ -739,7 +665,6 @@
         async function fetchCtbRouteStops(route) {
             try {
                 const encoded = encodeURIComponent(route);
-                // 修復：改為兼顧城巴與新巴的相容路線查詢 API
                 const [outboundRes, inboundRes] = await Promise.all([
                     fetch(`https://rt.data.gov.hk/v1/transport/citybus-nwfb/route-stop/CTB/${encoded}/outbound`),
                     fetch(`https://rt.data.gov.hk/v1/transport/citybus-nwfb/route-stop/CTB/${encoded}/inbound`)
@@ -846,6 +771,7 @@
             const encRoute = encodeURIComponent(currentRoute);
             let results = [];
 
+            // 1. 嘗試載入九巴/龍運同站 API (可以直接讀取全站所有路線)
             try {
                 const kmbRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${encStop}`);
                 if (kmbRes.ok) {
@@ -856,6 +782,7 @@
                 }
             } catch (e) {}
 
+            // 2. 嘗試載入城巴 API (需指定 route 參數)
             try {
                 const ctbRes = await fetch(`https://rt.data.gov.hk/v1/transport/citybus-nwfb/eta/CTB/${encStop}/${encRoute}`);
                 if (ctbRes.ok) {
@@ -973,6 +900,7 @@
                 contentEl.innerHTML = "";
                 const minUnit = getText('min');
 
+                // 無限制完全繪製同站所有路線
                 groupArray.forEach(group => {
                     group.etas.sort((a, b) => new Date(a.eta) - new Date(b.eta));
                     const validEtas = group.etas;
@@ -1078,6 +1006,7 @@
                 modalContent.innerHTML = "";
                 const minUnit = getText('min');
 
+                // 彈窗無限制顯示同站全部路線
                 groupArray.forEach(group => {
                     group.etas.sort((a, b) => new Date(a.eta) - new Date(b.eta));
                     const validEtas = group.etas;
@@ -1139,7 +1068,7 @@
             closeStopModal();
             let matchedCo = companyCode ? companyCode.toUpperCase() : currentCompany;
             if (matchedCo === "NWFB") matchedCo = "CTB";
-            if (matchedCo === "KMB" || matchedCo === "LWB" || matchedCo === "CTB" || matchedCo === "GMB") {
+            if (matchedCo === "KMB" || matchedCo === "LWB" || matchedCo === "CTB") {
                 companySelect.value = matchedCo;
                 currentCompany = matchedCo;
             }
@@ -1167,8 +1096,6 @@
                     fetchedData = await fetchKmbRouteStops(currentRoute);
                 } else if (currentCompany === "CTB") {
                     fetchedData = await fetchCtbRouteStops(currentRoute);
-                } else if (currentCompany === "GMB") {
-                    fetchedData = await fetchGmbRouteStops(currentRoute);
                 }
 
                 if (requestId !== fetchRequestId) return;
@@ -1253,50 +1180,38 @@
                 if (!stopObj) return null;
                 const stopId = stopObj.stop;
                 const seq = Number(stopObj.seq || (index + 1));
+                const namePromise = currentCompany === "CTB" ? getCtbStopName(stopId) : getKmbStopName(stopId);
                 
-                let namePromise;
                 let etaPromise;
-
-                if (currentCompany === "GMB") {
-                    let nameStr = stopObj.name_tc || getText('stop_load_error');
-                    if (currentLang === 'zh-Hans') nameStr = stopObj.name_sc || stopObj.name_tc || getText('stop_load_error');
-                    if (currentLang === 'en') nameStr = stopObj.name_en || stopObj.name_tc || getText('stop_load_error');
-                    namePromise = Promise.resolve(nameStr);
-                    
-                    etaPromise = fetchGmbStopETA(stopObj);
-                } else {
-                    namePromise = currentCompany === "CTB" ? getCtbStopName(stopId) : getKmbStopName(stopId);
-                    
-                    if (currentCompany === "KMB" || currentCompany === "LWB") {
-                        let filtered = [];
-                        if (routeEtaBatch && routeEtaBatch.length > 0) {
-                            filtered = routeEtaBatch.filter(item => 
-                                item && 
-                                (item.stop === stopId || (item.dir === dirToken && Number(item.seq) === seq)) && 
-                                (item.service_type == 1 || item.service_type === undefined)
-                            );
-                        }
-                        if (filtered.length === 0) {
-                            etaPromise = fetchKmbStopETA(stopId, currentRoute, dirToken);
-                        } else {
-                            etaPromise = Promise.resolve(filtered);
-                        }
-                    } else {
-                        etaPromise = fetchCtbSingleStopETA(stopId, currentRoute).then(list => {
-                            return list.filter(item => {
-                                if (!item) return false;
-                                const matchDir = !item.dir || 
-                                                 item.dir === dirToken || 
-                                                 (dirToken === "O" && (item.dir === "outbound" || item.dir === "O")) || 
-                                                 (dirToken === "I" && (item.dir === "inbound" || item.dir === "I"));
-                                if (!matchDir) return false;
-                                if (item.seq !== undefined && item.seq !== null && item.seq !== "") {
-                                    return parseInt(item.seq) === seq || item.stop === stopId;
-                                }
-                                return true;
-                            });
-                        });
+                if (currentCompany === "KMB" || currentCompany === "LWB") {
+                    let filtered = [];
+                    if (routeEtaBatch && routeEtaBatch.length > 0) {
+                        filtered = routeEtaBatch.filter(item => 
+                            item && 
+                            (item.stop === stopId || (item.dir === dirToken && Number(item.seq) === seq)) && 
+                            (item.service_type == 1 || item.service_type === undefined)
+                        );
                     }
+                    if (filtered.length === 0) {
+                        etaPromise = fetchKmbStopETA(stopId, currentRoute, dirToken);
+                    } else {
+                        etaPromise = Promise.resolve(filtered);
+                    }
+                } else {
+                    etaPromise = fetchCtbSingleStopETA(stopId, currentRoute).then(list => {
+                        return list.filter(item => {
+                            if (!item) return false;
+                            const matchDir = !item.dir || 
+                                             item.dir === dirToken || 
+                                             (dirToken === "O" && (item.dir === "outbound" || item.dir === "O")) || 
+                                             (dirToken === "I" && (item.dir === "inbound" || item.dir === "I"));
+                            if (!matchDir) return false;
+                            if (item.seq !== undefined && item.seq !== null && item.seq !== "") {
+                                return parseInt(item.seq) === seq || item.stop === stopId;
+                            }
+                            return true;
+                        });
+                    });
                 }
 
                 try {
@@ -1342,8 +1257,7 @@
             renderData.forEach(item => {
                 try {
                     let row = isSilent ? document.getElementById(`stop-row-${item.seq}`) : null;
-                    const isNewRow = !row;
-                    if (isNewRow) {
+                    if (!row) {
                         row = document.createElement('div');
                         row.id = `stop-row-${item.seq}`;
                     }
@@ -1409,8 +1323,7 @@
                         }
                     }
 
-                    // 修復：無論是 Silent 更新還是非 Silent，均能正確補充或建立 DOM
-                    if (!isSilent || isNewRow) {
+                    if (!isSilent) {
                         row.innerHTML = `
                             <div class="col-span-1 text-center text-xs font-mono font-bold text-slate-400 dark:text-slate-500">
                                 <span class="inline-block w-5 h-5 rounded-full bg-slate-100 leading-5 dark:bg-slate-700">${item.seq}</span>
