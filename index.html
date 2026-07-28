@@ -651,19 +651,32 @@ async function checkAPIHealth(){
         log('⚠️ 檢測到 file:// 協議，API 可能返回 422','warn');
         log('💡 提示：可用 python3 -m http.server 啟動本地伺服器','info');
     }
-    // KMB API
-    const kmbTest=await safeFetch('https://data.etabus.gov.hk/v1/transport/kmb/route/1A',{},5000);
+    // KMB API — 先試直連，422 時自動嘗試備用端點
+    let kmbTest=await safeFetch('https://data.etabus.gov.hk/v1/transport/kmb/route/1A',{},5000);
+    if(kmbTest.error&&kmbTest.error.includes('422')){
+        log('KMB API 返回 422，嘗試備用端點...','warn');
+        // 備用：部分路線改用 HTTPS 標頭修正
+        kmbTest=await safeFetch('https://data.etabus.gov.hk/v1/transport/kmb/route/1A',{headers:{'Origin':location.origin,'Referer':location.href}},5000);
+    }
     let kmbMsg=kmbTest.ok?t('api_ok'):`${t('api_fail')}: ${kmbTest.error}`;
-    if(kmbTest.error&&kmbTest.error.includes('422'))kmbMsg+=' (建議用HTTP伺服器打開)';
-    updateAPIStatus('kmb',kmbTest.ok?'ok':'err',kmbMsg);
-    state.apiHealth.KMB={status:kmbTest.ok?'ok':'err',lastCheck:new Date(),errorCount:kmbTest.ok?0:state.apiHealth.KMB.errorCount+1};
+    if(kmbTest.error&&kmbTest.error.includes('422')){
+        kmbMsg='HTTP 422 — 如部署於 GitHub Pages 仍失敗，請設置代理 (localStorage.setItem("bus-proxy","URL"))';
+    }
+    updateAPIStatus('kmb',kmbTest.ok?'ok':(!kmbTest.ok&&kmbTest.error.includes('422'))?'warn':'err',kmbMsg);
+    state.apiHealth.KMB={status:kmbTest.ok?'ok':(!kmbTest.ok&&kmbTest.error.includes('422'))?'warn':'err',lastCheck:new Date(),errorCount:kmbTest.ok?0:state.apiHealth.KMB.errorCount+1};
 
     // CTB API V2
-    const ctbTest=await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/routes/CTB',{},5000);
+    let ctbTest=await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/routes/CTB',{},5000);
+    if(ctbTest.error&&ctbTest.error.includes('422')){
+        log('CTB API 返回 422，嘗試備用端點...','warn');
+        ctbTest=await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/routes/CTB',{headers:{'Origin':location.origin}},5000);
+    }
     let ctbMsg=ctbTest.ok?t('api_ok'):`${t('api_fail')}: ${ctbTest.error}`;
-    if(ctbTest.error&&ctbTest.error.includes('422'))ctbMsg+=' (建議用HTTP伺服器打開)';
-    updateAPIStatus('ctb',ctbTest.ok?'ok':'err',ctbMsg);
-    state.apiHealth.CTB={status:ctbTest.ok?'ok':'err',lastCheck:new Date(),errorCount:ctbTest.ok?0:state.apiHealth.CTB.errorCount+1};
+    if(ctbTest.error&&ctbTest.error.includes('422')){
+        ctbMsg='HTTP 422 — 同上，建議設置代理';
+    }
+    updateAPIStatus('ctb',ctbTest.ok?'ok':(!ctbTest.ok&&ctbTest.error.includes('422'))?'warn':'err',ctbMsg);
+    state.apiHealth.CTB={status:ctbTest.ok?'ok':(!ctbTest.ok&&ctbTest.error.includes('422'))?'warn':'err',lastCheck:new Date(),errorCount:ctbTest.ok?0:state.apiHealth.CTB.errorCount+1};
 
     // HKO 天文台
     const hkoTest=await safeFetch(API.hko.warnsum,{},5000);
