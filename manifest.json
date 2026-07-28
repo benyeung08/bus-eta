@@ -1,0 +1,22 @@
+{
+  "name": "香港巴士實時ETA系統",
+  "short_name": "巴士ETA",
+  "description": "香港巴士實時到站時間系統 - 九巴KMB/城巴CTB/龍運LWB",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1e293b",
+  "theme_color": "#1e40af",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000vg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000vg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
