@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>香港巴士實時 ETA 及每日動態營運系統 | Hong Kong Bus Live System</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+    <style>
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        html.dark ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        html.dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .blink-warning { animation: blink 0.5s ease-in-out infinite; }
+        
+        .arrived-status {
+            background: linear-gradient(135deg, #39FF14 0%, #00CC00 100%);
+            box-shadow: 0 0 8px rgba(57, 255, 20, 0.6);
+        }
+        
+        .arrived-terminal-status {
+            background: linear-gradient(135deg, #FF8C00 0%, #FF4500 100%);
+            box-shadow: 0 0 8px rgba(255, 69, 0, 0.6);
+        }
+
+        .arrived-loop-status {
+            background: linear-gradient(135deg, #8A2BE2 0%, #4B0082 100%);
+            box-shadow: 0 0 8px rgba(138, 43, 226, 0.6);
+        }
+
+        .terminal-badge {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        }
+
+        .error-row {
+            background-color: #fef2f2;
+            color: #dc2626;
+        }
+        .dark .error-row {
+            background-color: rgba(220, 38, 38, 0.1);
+            color: #f87171;
+        }
+
+        body, section, div, button, select, input {
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans min-h-screen flex flex-col text-slate-800 dark:bg-slate-900 dark:text-slate-200">
+    <main class="flex-grow max-w-6xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- 左側篩選面板與每日營運狀況摘要 -->
+        <section class="space-y-4">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 dark:bg-slate-800 dark:border-slate-700">
+                <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-2 dark:border-slate-700">
+                    <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2 dark:text-slate-200">
+                        <i class="fa-solid fa-sliders text-blue-500"></i> <span data-lang="filter">路線篩選</span>
+                    </h2>
+                    <div class="flex items-center gap-2">
+                        <a href="download-app.html" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white text-xs font-bold shadow-sm transition">
+                            <i class="fa-solid fa-download text-[11px]"></i> <span data-lang="download_app">下載App</span>
+                        </a>
+                        <button type="button" id="theme-toggle" aria-label="Toggle theme" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition">
+                            <i id="theme-icon" class="fa-solid fa-moon text-sm"></i>
+                        </button>
+                        <select id="lang-select" aria-label="Language Select" class="text-xs font-mono bg-slate-100 border border-slate-200 rounded-md px-2 py-1 focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                            <option value="zh-Hant">繁中</option>
+                            <option value="zh-Hans">簡中</option>
+                            <option value="en">EN</option>
+                        </select>
+                        <span class="text-xs font-mono bg-slate-900 text-white px-2.5 py-1 rounded-md border border-slate-800 dark:bg-slate-950" id="live-clock">00:00:00</span>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 dark:text-slate-400" data-lang="company">巴士公司</label>
+                        <select id="company-select" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium transition dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                            <option value="KMB">九巴 KMB</option>
+                            <option value="CTB">城巴 CTB</option>
+                            <option value="LWB">龍運 LWB</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 dark:text-slate-400" data-lang="route">輸入路線</label>
+                        <div class="relative">
+                            <input type="text" id="route-input" value="1A" placeholder="e.g. 1A, 720, S1" class="w-full p-2.5 pl-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-bold tracking-wide transition dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                            <button type="button" id="search-btn" aria-label="Search Route" class="absolute right-2 top-2 w-8 h-8 rounded-lg bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition shadow-sm">
+                                <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 dark:text-slate-400" data-lang="direction">行車方向</label>
+                        <div class="grid grid-cols-1 gap-2" id="direction-container">
+                            <button type="button" id="dir-outbound" data-dir="outbound" class="dir-btn py-2.5 px-3 bg-blue-600 text-white text-sm rounded-xl font-medium shadow-sm transition text-left flex justify-between items-center">
+                                <span data-lang="outbound">去程</span> <i class="fa-solid fa-circle-chevron-right text-xs opacity-70"></i>
+                            </button>
+                            <button type="button" id="dir-inbound" data-dir="inbound" class="dir-btn py-2.5 px-3 bg-slate-100 text-slate-600 text-sm rounded-xl font-medium hover:bg-slate-200 transition text-left flex justify-between items-center dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600">
+                                <span data-lang="inbound">回程</span> <i class="fa-solid fa-circle-chevron-right text-xs opacity-30"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="text-center pt-2">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-100 w-full justify-center shadow-inner dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800">
+                            <i class="fa-solid fa-bolt text-amber-500 animate-pulse text-[11px]"></i> <span data-lang="refresh">秒級即時倒數與背景同步</span>
+                        </span>
+                    </div>
+                    <a href="download-app.html" class="flex items-center justify-center gap-2 mt-3 w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white text-sm font-bold shadow-md transition transform hover:scale-[1.02]">
+                        <i class="fa-solid fa-mobile-screen-button text-lg"></i>
+                        <span data-lang="download_app_banner">📲 下載手機 App · 享受完整功能</span>
+                        <i class="fa-solid fa-chevron-right text-xs opacity-70"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- 當日異動與特別天氣營運卡片 -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 dark:bg-slate-800 dark:border-slate-700 space-y-3">
+                <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider dark:text-slate-400">
+                        <i class="fa-solid fa-cloud-sun-rain text-amber-500 mr-1"></i>當日網絡與天氣狀況
+                    </h3>
+                    <span id="update-date" class="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-mono dark:bg-blue-900/40 dark:text-blue-300">每日更新中</span>
+                </div>
+
+                <!-- 每日異動數據統計 -->
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="p-2.5 bg-slate-50 rounded-xl dark:bg-slate-700/50 flex flex-col justify-between">
+                        <span class="text-slate-400 block text-[10px]">新增 / 改道 / 取消</span>
+                        <span id="stat-changes" class="font-bold text-blue-600 dark:text-blue-400 text-sm mt-0.5">載入中...</span>
+                    </div>
+                    <div class="p-2.5 bg-slate-50 rounded-xl dark:bg-slate-700/50 flex flex-col justify-between">
+                        <span class="text-slate-400 block text-[10px]">營運中路線總數</span>
+                        <span id="stat-active" class="font-bold text-emerald-600 dark:text-emerald-400 text-sm mt-0.5">載入中...</span>
+                    </div>
+                </div>
+
+                <!-- 當日特別路線動態清單 -->
+                <div class="space-y-1.5 pt-1 text-[11px]">
+                    <div class="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                        <span><i class="fa-solid fa-plus-circle text-emerald-500 mr-1"></i>當日新增路線:</span>
+                        <span id="daily-added-list" class="font-mono font-bold text-right ml-2">--</span>
+                    </div>
+                    <div class="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                        <span><i class="fa-solid fa-route text-amber-500 mr-1"></i>當日改道/修改:</span>
+                        <span id="daily-rerouted-list" class="font-mono font-bold text-right ml-2">--</span>
+                    </div>
+                    <div class="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                        <span><i class="fa-solid fa-minus-circle text-red-500 mr-1"></i>當日取消路線/車站:</span>
+                        <span id="daily-cancelled-list" class="font-mono font-bold text-right ml-2">--</span>
+                    </div>
+                </div>
+
+                <!-- 天氣警告與剩餘服務提示 -->
+                <div id="weather-alert-box" class="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-xs text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-900/50 dark:text-emerald-300 flex items-start gap-2">
+                    <i id="weather-icon" class="fa-solid fa-shield-halved text-emerald-500 mt-0.5 shrink-0"></i>
+                    <div class="space-y-1">
+                        <div id="weather-status-text" class="font-bold">天氣服務狀況：維持正常營運</div>
+                        <div id="weather-detail-text" class="text-[11px] opacity-90">剩餘線路將服務至正常尾班車時間。</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 右側數據顯示區域 -->
+        <section class="md:col-span-2 flex flex-col gap-4">
+            
+            <div id="route-banner" class="bg-gradient-to-r from-red-600 to-red-700 text-white p-5 rounded-2xl shadow-sm flex justify-between items-center transition-all duration-300">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-3">
+                        <span class="text-3xl font-black bg-white text-red-600 px-3 py-0.5 rounded-xl shadow-sm shrink-0" id="info-route">1A</span>
+                        <h3 class="text-lg font-bold tracking-wide truncate" id="info-direction">Loading...</h3>
+                    </div>
+                    <div class="flex items-center gap-2 mt-2 flex-wrap">
+                        <p class="text-xs opacity-80 flex items-center gap-1"><i class="fa-solid fa-circle-info"></i> <span data-lang="source">結合政府開放 API 與常規班次時間表</span></p>
+                        <span id="route-status-tag" class="text-[10px] bg-white/20 px-2 py-0.5 rounded font-bold backdrop-blur-sm hidden"></span>
+                    </div>
+                </div>
+                <span class="bg-white/20 text-xs font-bold px-3 py-1.5 rounded-full backdrop-blur-sm shadow-inner uppercase tracking-wider shrink-0" id="company-badge">九巴 KMB</span>
+            </div>
+
+            <div class="flex bg-slate-200 p-1 rounded-xl dark:bg-slate-700">
+                <button type="button" id="tab-btn-eta" class="flex-1 py-2.5 text-sm font-bold rounded-lg transition bg-white text-blue-600 shadow-sm flex justify-center items-center gap-2 dark:bg-slate-800 dark:text-blue-400">
+                    <i class="fa-solid fa-stopwatch"></i> <span data-lang="eta_tab">實時到站時間</span>
+                </button>
+                <button type="button" id="tab-btn-timetable" class="flex-1 py-2.5 text-sm font-medium rounded-lg transition text-slate-600 hover:text-slate-900 flex justify-center items-center gap-2 dark:text-slate-400 dark:hover:text-white">
+                    <i class="fa-solid fa-calendar-days"></i> <span data-lang="tt_tab">班次時間表</span>
+                </button>
+            </div>
+
+            <!-- ETA 列表頁簽 -->
+            <div id="panel-eta" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-grow flex flex-col dark:bg-slate-800 dark:border-slate-700">
+                <div class="bg-slate-50 px-4 py-3 border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider grid grid-cols-12 dark:bg-slate-700/50 dark:text-slate-400 dark:border-slate-700">
+                    <div class="col-span-1 text-center" data-lang="col_seq">#</div>
+                    <div class="col-span-6" data-lang="col_stop">巴士分站名稱</div>
+                    <div class="col-span-5 text-right" data-lang="col_time">預計到站時間 / 班次時刻</div>
+                </div>
+                <div id="stops-container" class="divide-y divide-slate-100 max-h-[55vh] overflow-y-auto flex-grow dark:divide-slate-700">
+                </div>
+            </div>
+
+            <!-- 時間表頁簽 -->
+            <div id="panel-timetable" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-grow hidden p-5 dark:bg-slate-800 dark:border-slate-700">
+                <div id="timetable-container" class="space-y-6 max-h-[55vh] overflow-y-auto pr-1">
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- 同站路線彈出式 Modal -->
+    <div id="stop-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden p-4 transition-opacity">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-xl w-full max-h-[85vh] flex flex-col border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <div class="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-700/50">
+                <div>
+                    <h3 class="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-location-dot text-red-500"></i> <span id="modal-stop-name">--</span>
+                    </h3>
+                    <p class="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5" data-lang="same_stop_title">同站全部路線 ETA</p>
+                </div>
+                <button type="button" id="modal-close-btn" class="w-8 h-8 rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200 flex items-center justify-center transition cursor-pointer">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div id="modal-content" class="p-4 overflow-y-auto space-y-3 flex-grow bg-white dark:bg-slate-800">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 核心數據與配置
+        const translations = {
+            "zh-Hant": {
+                filter: "路線篩選", company: "巴士公司", route: "輸入路線", direction: "行車方向",
+                outbound: "去程", inbound: "回程", refresh: "秒級即時倒數與背景同步",
+                refresh_btn: "刷新數據",
+                source: "結合政府開放 API 與常規班次時間表",
+                eta_tab: "實時到站時間", tt_tab: "班次時間表",
+                col_seq: "#", col_stop: "巴士分站名稱", col_time: "預計到站時間 / 班次時刻",
+                loading: "載入中...", no_service: "無服務", not_found: "查無此路線", no_data: "暫無班次數據",
+                search_error: "找不到該路線資料，請檢查公司與編號。", no_schedule: "無法加載時間表",
+                to: "往", loop: "循環線", loop_point: "循環點",
+                terminal: "總站", end_terminal: "終點", second_last: "倒數第2站",
+                departs_in: "即將開出", est_depart: "預計開出", arrived: "本班車已到站", arr_shortly: "即將到站", boarding_now: "請立即上車",
+                arrive_terminal: "本班車已抵達終點總站", arr_terminal_shortly: "即將抵達終點", service_ends: "服務即將結束",
+                back_to_start: "本班車已返回起點", back_shortly: "即將返回起點", looping: "循環中",
+                min: "分鐘", stops_unit: "站", stop_load_error: "站點數據加載失敗",
+                same_stop_routes: "同站所有線路", same_stop_title: "同站全部路線 ETA",
+                loading_stop_eta: "正在載入同站全部路線數據...", no_other_routes: "此站點暫無其他路線數據", switch_route: "切換路線",
+                download_app: "下載App", download_app_banner: "📲 下載手機 App · 享受完整功能",
+                days: {
+                    mon_fri: "星期一至五 (Mon - Fri)", sat: "星期六 (Saturdays)", sun_ph: "星期日及公眾假期 (Suns & PH)",
+                    daily: "每日營運 (Daily)", weekdays: "星期一至五 (Mondays to Fridays)", weekends: "星期六、日及公眾假期 (Weeks & Holidays)"
+                }
+            },
+            "zh-Hans": {
+                filter: "路线筛选", company: "巴士公司", route: "输入路线", direction: "行车方向",
+                outbound: "去程", inbound: "回程", refresh: "秒级实时倒数与背景同步",
+                refresh_btn: "刷新数据",
+                source: "结合政府开放 API 与常规班次时间表",
+                eta_tab: "实时到站时间", tt_tab: "班次时间表",
+                col_seq: "#", col_stop: "巴士分站名称", col_time: "预计到站时间 / 班次时刻",
+                loading: "载入中...", no_service: "无服务", not_found: "查无此路线", no_data: "暂无比次数据",
+                search_error: "找不到该路线资料，请检查公司与编号。", no_schedule: "无法加载时间表",
+                to: "往", loop: "循环线", loop_point: "循环点",
+                terminal: "总站", end_terminal: "终点", second_last: "倒数第2站",
+                departs_in: "即将开出", est_depart: "预计开出", arrived: "本班车已到站", arr_shortly: "即将到站", boarding_now: "请立即上车",
+                arrive_terminal: "本班车已抵达终点总站", arr_terminal_shortly: "即将抵达终点", service_ends: "服务即将结束",
+                back_to_start: "本班车已返回起点", back_shortly: "即将返回起点", looping: "循环中",
+                min: "分钟", stops_unit: "站", stop_load_error: "站点数据加载失败",
+                same_stop_routes: "同站所有线路", same_stop_title: "同站全部路线 ETA",
+                loading_stop_eta: "正在载入同站全部路线数据...", no_other_routes: "此站点暂无其他路线数据", switch_route: "切换路线",
+                download_app: "下载App", download_app_banner: "📲 下载手机 App · 享受完整功能",
+                days: {
+                    mon_fri: "星期一至五 (Mon - Fri)", sat: "星期六 (Saturdays)", sun_ph: "星期日及公众假期 (Suns & PH)",
+                    daily: "每日营运 (Daily)", weekdays: "星期一至五 (Mondays to Fridays)", weekends: "星期六、日及公众假期 (Weeks & Holidays)"
+                }
+            },
+            "en": {
+                filter: "Route Filter", company: "Operator", route: "Enter Route", direction: "Direction",
+                outbound: "Outbound", inbound: "Inbound", refresh: "Live Countdown",
+                refresh_btn: "Refresh",
+                source: "Powered by Gov Open API & Schedule Data",
+                eta_tab: "Real-time ETA", tt_tab: "Timetable",
+                col_seq: "#", col_stop: "Bus Stop Name", col_time: "ETA / Schedule",
+                loading: "Loading...", no_service: "No Service", not_found: "Route Not Found", no_data: "No Data",
+                search_error: "Route not found. Please check operator and route number.", no_schedule: "Timetable unavailable",
+                to: "To", loop: "Circular Route", loop_point: "Loop Point",
+                terminal: "Terminus", end_terminal: "End Terminus", second_last: "2nd Last Stop",
+                departs_in: "Departing Soon", est_depart: "Est. Departure", arrived: "Bus Arrived", arr_shortly: "Arriving Soon", boarding_now: "Board Now",
+                arrive_terminal: "Bus Arrived at Terminus", arr_terminal_shortly: "Arriving Terminus", service_ends: "Service Ending",
+                back_to_start: "Bus Returning to Start", back_shortly: "Returning Shortly", looping: "Looping",
+                min: "min", stops_unit: "stops", stop_load_error: "Failed to load stop data",
+                same_stop_routes: "All Stop Routes", same_stop_title: "All Routes at Stop",
+                loading_stop_eta: "Loading all routes at stop...", no_other_routes: "No other route data available at this stop", switch_route: "Switch",
+                download_app: "Download App", download_app_banner: "📲 Download Mobile App · Full Features",
+                days: {
+                    mon_fri: "Mon - Fri", sat: "Saturdays", sun_ph: "Sundays & PH",
+                    daily: "Daily", weekdays: "Weekdays", weekends: "Weekends & Holidays"
+                }
+            }
+        };
+
+        const staticTimetables = {
+            "KMB": {
+                "1A": {
+                    "outbound": [
+                        { day: "mon_fri", periods: [{ t: "05:30 - 06:30", f: "10 - 12 min" }, { t: "06:30 - 09:00", f: "4 - 7 min" }, { t: "09:00 - 17:00", f: "7 - 10 min" }, { t: "17:00 - 19:30", f: "5 - 8 min" }, { t: "19:30 - 00:15", f: "10 - 15 min" }] },
+                        { day: "sat", periods: [{ t: "05:30 - 06:30", f: "10 - 12 min" }, { t: "06:30 - 23:00", f: "6 - 10 min" }, { t: "23:00 - 00:15", f: "12 - 15 min" }] },
+                        { day: "sun_ph", periods: [{ t: "05:30 - 08:30", f: "12 - 15 min" }, { t: "08:30 - 23:00", f: "7 - 12 min" }, { t: "23:00 - 00:15", f: "15 min" }] }
+                    ],
+                    "inbound": [
+                        { day: "mon_fri", periods: [{ t: "05:40 - 07:00", f: "10 - 12 min" }, { t: "07:00 - 09:30", f: "5 - 8 min" }, { t: "09:30 - 17:30", f: "8 - 12 min" }, { t: "17:30 - 20:00", f: "6 - 9 min" }, { t: "20:00 - 00:30", f: "11 - 15 min" }] },
+                        { day: "weekends", periods: [{ t: "05:40 - 08:00", f: "12 - 15 min" }, { t: "08:00 - 23:00", f: "8 - 12 min" }, { t: "23:00 - 00:30", f: "15 min" }] }
+                    ]
+                }
+            },
+            "CTB": {
+                "720": {
+                    "outbound": [
+                        { day: "mon_fri", periods: [{ t: "05:50 - 07:00", f: "12 - 15 min" }, { t: "07:00 - 09:00", f: "4 - 8 min" }, { t: "09:00 - 16:30", f: "10 - 15 min" }, { t: "16:30 - 19:00", f: "6 - 10 min" }, { t: "19:00 - 00:00", f: "15 - 20 min" }] },
+                        { day: "weekends", periods: [{ t: "05:50 - 09:00", f: "15 min" }, { t: "09:00 - 21:00", f: "10 - 12 min" }, { t: "21:00 - 00:00", f: "15 - 20 min" }] }
+                    ],
+                    "inbound": [
+                        { day: "mon_fri", periods: [{ t: "06:15 - 07:30", f: "12 - 15 min" }, { t: "07:30 - 09:30", f: "6 - 10 min" }, { t: "09:30 - 17:30", f: "12 - 15 min" }, { t: "17:30 - 20:00", f: "5 - 9 min" }, { t: "20:00 - 00:30", f: "15 - 20 min" }] },
+                        { day: "weekends", periods: [{ t: "06:15 - 00:30", f: "12 - 15 min" }] }
+                    ]
+                },
+                "S1": {
+                    "outbound": [{ day: "daily", periods: [{ t: "06:00 - 24:00", f: "10 - 15 min" }] }],
+                    "inbound": [{ day: "daily", periods: [{ t: "06:00 - 24:00", f: "10 - 15 min" }] }]
+                }
+            },
+            "LWB": {
+                "E33": {
+                    "outbound": [{ day: "daily", periods: [{ t: "05:20 - 06:30", f: "15 - 20 min" }, { t: "06:30 - 08:30", f: "10 - 12 min" }, { t: "08:30 - 22:00", f: "12 - 15 min" }, { t: "22:00 - 00:00", f: "20 min" }] }],
+                    "inbound": [{ day: "daily", periods: [{ t: "05:30 - 07:30", f: "20 min" }, { t: "07:30 - 17:30", f: "12 - 15 min" }, { t: "17:30 - 19:30", f: "8 - 12 min" }, { t: "19:30 - 00:00", f: "15 - 20 min" }] }]
+                }
+            }
+        };
+
+        // 每日營運數據動態維護模組
+        let lastUpdatedDate = "";
+        let dailyRouteMetadata = {
+            added: [],
+            modified: [],
+            rerouted: [],
+            cancelled: [],
+            cancelledStops: [],
+            totalActiveCount: 0,
+            weather: {
+                isSevere: false,
+                signal: "NORMAL",
+                remainingActiveCount: 0,
+                lastBusTimetable: {},
+                isRecovering: false
+            }
+        };
+
+        let currentLang = 'zh-Hant';
+        const stopDataCache = new Map();
+        let currentCompany = "KMB";
+        let currentRoute = "1A";
+        let currentDirection = "outbound";
+        let currentTab = "eta";
+        let activeRouteData = null;
+
+        // 雙定時器架構
+        let localClockTimer = null;
+        let apiSyncTimer = null;
+        let dailySyncTimer = null;
+        
+        let isFetching = false;
+        let isLoopRoute = false;
+        let isDarkMode = false;
+        let fetchRequestId = 0;
+        let renderRequestId = 0;
+        let modalRequestId = 0;
+        let drawerRequestIds = {};
+
+        const brandStyles = {
+            KMB: { bg: "from-red-600 to-red-700 text-white", text: "text-red-600", label: "九巴 KMB" },
+            CTB: { bg: "from-amber-400 to-amber-500 text-slate-900", text: "text-amber-600", label: "城巴 CTB" },
+            LWB: { bg: "from-orange-500 to-orange-600 text-white", text: "text-orange-600", label: "龍運 LWB" }
+        };
+
+        const langSelect = document.getElementById('lang-select');
+        const companySelect = document.getElementById('company-select');
+        const routeInput = document.getElementById('route-input');
+        const searchBtn = document.getElementById('search-btn');
+        const dirOutbound = document.getElementById('dir-outbound');
+        const dirInbound = document.getElementById('dir-inbound');
+        const infoRoute = document.getElementById('info-route');
+        const infoDirection = document.getElementById('info-direction');
+        const companyBadge = document.getElementById('company-badge');
+        const routeBanner = document.getElementById('route-banner');
+        const stopsContainer = document.getElementById('stops-container');
+        const timetableContainer = document.getElementById('timetable-container');
+        const tabBtnEta = document.getElementById('tab-btn-eta');
+        const tabBtnTimetable = document.getElementById('tab-btn-timetable');
+        const panelEta = document.getElementById('panel-eta');
+        const panelTimetable = document.getElementById('panel-timetable');
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const stopModal = document.getElementById('stop-modal');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const modalStopName = document.getElementById('modal-stop-name');
+        const modalContent = document.getElementById('modal-content');
+
+        // --- 自動更新功能模組 ---
+
+        async function performDailyRouteDataSync() {
+            try {
+                // 1. 同步路線總數
+                const routeRes = await fetch("https://data.etabus.gov.hk/v1/transport/kmb/route/");
+                if (routeRes.ok) {
+                    const data = await routeRes.json();
+                    dailyRouteMetadata.totalActiveCount = data.data ? data.data.length : 0;
+                }
+
+                // 2. 同步特別交通消息 (TD)
+                const tdNewsRes = await fetch("https://resource.data.one.gov.hk/td/tc/specialtrafficnews.xml");
+                if (tdNewsRes.ok) {
+                    const text = await tdNewsRes.text();
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(text, "text/xml");
+                    const messages = xmlDoc.getElementsByTagName("message");
+                    
+                    dailyRouteMetadata.rerouted = [];
+                    dailyRouteMetadata.cancelled = [];
+                    dailyRouteMetadata.added = [];
+                    dailyRouteMetadata.modified = [];
+                    dailyRouteMetadata.weather.isRecovering = false;
+
+                    for (let msg of messages) {
+                        const content = msg.getElementsByTagName("ChinText")[0]?.textContent || "";
+                        
+                        // 提取路線編號 (簡單正則)
+                        const routes = content.match(/[A-Z]?[0-9]+[A-Z]?/g) || [];
+                        
+                        if (content.includes("改道") || content.includes("臨時調整")) {
+                            dailyRouteMetadata.rerouted.push(...routes);
+                        }
+                        if (content.includes("暫停") || content.includes("取消")) {
+                            dailyRouteMetadata.cancelled.push(...routes);
+                        }
+                        if (content.includes("新增") || content.includes("加開")) {
+                            dailyRouteMetadata.added.push(...routes);
+                        }
+                        if (content.includes("修改") || content.includes("調整班次")) {
+                            dailyRouteMetadata.modified.push(...routes);
+                        }
+                        if (content.includes("恢復") || content.includes("正常")) {
+                            dailyRouteMetadata.weather.isRecovering = true;
+                        }
+                    }
+                    // 去重
+                    dailyRouteMetadata.rerouted = [...new Set(dailyRouteMetadata.rerouted)];
+                    dailyRouteMetadata.cancelled = [...new Set(dailyRouteMetadata.cancelled)];
+                    dailyRouteMetadata.added = [...new Set(dailyRouteMetadata.added)];
+                    dailyRouteMetadata.modified = [...new Set(dailyRouteMetadata.modified)];
+                }
+
+                // 3. 同步天氣狀況 (HKO)
+                const weatherRes = await fetch("https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc");
+                if (weatherRes.ok) {
+                    const wData = await weatherRes.json();
+                    const warnings = Object.values(wData);
+                    
+                    dailyRouteMetadata.weather.isSevere = false;
+                    dailyRouteMetadata.weather.signal = "NORMAL";
+                    
+                    for (let w of warnings) {
+                        if (w.name.includes("八號") || w.name.includes("九號") || w.name.includes("十號") || w.name.includes("黑色暴雨")) {
+                            dailyRouteMetadata.weather.isSevere = true;
+                            dailyRouteMetadata.weather.signal = w.name;
+                            break;
+                        }
+                    }
+                    
+                    if (dailyRouteMetadata.weather.isSevere) {
+                        dailyRouteMetadata.weather.remainingActiveCount = Math.floor(dailyRouteMetadata.totalActiveCount * 0.1); // 假設僅剩 10%
+                    } else {
+                        dailyRouteMetadata.weather.remainingActiveCount = dailyRouteMetadata.totalActiveCount;
+                    }
+                }
+            } catch (err) {
+                console.warn("自動同步失敗，使用快取或預設數據", err);
+            } finally {
+                renderDailyStatusUI();
+            }
+        }
+
+        function renderDailyStatusUI() {
+            const statChanges = document.getElementById('stat-changes');
+            const statActive = document.getElementById('stat-active');
+            const dailyAddedList = document.getElementById('daily-added-list');
+            const dailyReroutedList = document.getElementById('daily-rerouted-list');
+            const dailyCancelledList = document.getElementById('daily-cancelled-list');
+            const weatherAlertBox = document.getElementById('weather-alert-box');
+            const weatherIcon = document.getElementById('weather-icon');
+            const weatherStatusText = document.getElementById('weather-status-text');
+            const weatherDetailText = document.getElementById('weather-detail-text');
+
+            const totalChanges = dailyRouteMetadata.added.length + dailyRouteMetadata.rerouted.length + dailyRouteMetadata.cancelled.length;
+            statChanges.textContent = `${totalChanges} 項`;
+            statActive.textContent = `${dailyRouteMetadata.totalActiveCount || '--'} 條`;
+
+            dailyAddedList.textContent = dailyRouteMetadata.added.slice(0, 5).join(', ') + (dailyRouteMetadata.added.length > 5 ? '...' : '') || '無';
+            dailyReroutedList.textContent = dailyRouteMetadata.rerouted.concat(dailyRouteMetadata.modified).slice(0, 5).join(', ') + (dailyRouteMetadata.rerouted.length + dailyRouteMetadata.modified.length > 5 ? '...' : '') || '無';
+            dailyCancelledList.textContent = dailyRouteMetadata.cancelled.slice(0, 5).join(', ') + (dailyRouteMetadata.cancelled.length > 5 ? '...' : '') || '無';
+
+            if (dailyRouteMetadata.weather.isSevere) {
+                weatherAlertBox.className = "p-3 bg-red-50 rounded-xl border border-red-200 text-xs text-red-800 dark:bg-red-950/40 dark:border-red-900 dark:text-red-300 flex items-start gap-2 animate-pulse";
+                weatherIcon.className = "fa-solid fa-triangle-exclamation text-red-500 mt-0.5 shrink-0";
+                weatherStatusText.textContent = `受惡劣天氣影響 (${dailyRouteMetadata.weather.signal})`;
+                weatherDetailText.textContent = `全港僅剩約 ${dailyRouteMetadata.weather.remainingActiveCount} 條路線有限度服務。`;
+            } else if (dailyRouteMetadata.weather.isRecovering) {
+                weatherAlertBox.className = "p-3 bg-blue-50 rounded-xl border border-blue-200 text-xs text-blue-800 dark:bg-blue-950/40 dark:border-blue-900 dark:text-blue-300 flex items-start gap-2";
+                weatherIcon.className = "fa-solid fa-clock-rotate-left text-blue-500 mt-0.5 shrink-0";
+                weatherStatusText.textContent = `服務正在恢復中`;
+                weatherDetailText.textContent = `天氣好轉，巴士線路正逐步恢復正常服務與班次。`;
+            } else {
+                weatherAlertBox.className = "p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-xs text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-900/50 dark:text-emerald-300 flex items-start gap-2";
+                weatherIcon.className = "fa-solid fa-shield-halved text-emerald-500 mt-0.5 shrink-0";
+                weatherStatusText.textContent = `天氣服務狀況：維持正常營運`;
+                weatherDetailText.textContent = `剩餘線路將服務至正常尾班車時間。`;
+            }
+        }
+
+        // --- 原有功能優化 ---
+
+        async function mapWithConcurrency(items, limit, fn) {
+            if (!items || items.length === 0) return [];
+            const results = new Array(items.length);
+            let index = 0;
+            const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+                while (index < items.length) {
+                    const currentIndex = index++;
+                    try {
+                        results[currentIndex] = await fn(items[currentIndex], currentIndex);
+                    } catch (e) {
+                        console.error("Worker error:", e);
+                        results[currentIndex] = {
+                            seq: currentIndex + 1,
+                            stopId: items[currentIndex]?.stop || '',
+                            name: translations[currentLang].stop_load_error,
+                            etaList: [],
+                            isSecondLast: false,
+                            isEndTerminal: false
+                        };
+                    }
+                }
+            });
+            await Promise.all(workers);
+            return results;
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function applyTheme(theme) {
+            isDarkMode = theme === 'dark';
+            document.documentElement.classList.toggle('dark', isDarkMode);
+            themeIcon.className = isDarkMode ? 'fa-solid fa-sun text-sm' : 'fa-solid fa-moon text-sm';
+            localStorage.setItem('theme', theme);
+        }
+
+        function toggleTheme() {
+            applyTheme(isDarkMode ? 'light' : 'dark');
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) {
+                applyTheme(savedTheme);
+            } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                applyTheme('dark');
+            } else {
+                applyTheme('light');
+            }
+        }
+
+        async function init() {
+            initTheme();
+            await performDailyRouteDataSync();
+            setInterval(updateClock, 1000);
+            dailySyncTimer = setInterval(performDailyRouteDataSync, 300000); // 每5分鐘同步一次每日動態
+            updateClock();
+            applyTranslations();
+
+            themeToggle.addEventListener('click', toggleTheme);
+            langSelect.addEventListener('change', (e) => {
+                currentLang = e.target.value;
+                applyTranslations();
+                updateDirectionLabels();
+                renderTabsContent();
+            });
+
+            companySelect.addEventListener('change', (e) => {
+                currentCompany = e.target.value;
+                routeInput.value = currentCompany === "KMB" ? "1A" : currentCompany === "CTB" ? "720" : "E33";
+                updateBannerStyle();
+            });
+
+            searchBtn.addEventListener('click', loadBusData);
+            
+            routeInput.addEventListener('keydown', (e) => { 
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    loadBusData(); 
+                }
+            });
+
+            document.querySelectorAll('.dir-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const targetBtn = e.target.closest('.dir-btn');
+                    if (!targetBtn) return;
+                    currentDirection = targetBtn.dataset.dir;
+                    detectLoopRoute();
+                    updateDirectionButtons();
+                    renderTabsContent();
+                    resetAutoRefresh();
+                });
+            });
+
+            tabBtnEta.addEventListener('click', () => switchTab('eta'));
+            tabBtnTimetable.addEventListener('click', () => switchTab('timetable'));
+
+            modalCloseBtn.addEventListener('click', closeStopModal);
+            stopModal.addEventListener('click', (e) => {
+                if (e.target === stopModal) closeStopModal();
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !stopModal.classList.contains('hidden')) {
+                    closeStopModal();
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                const btnSameStop = e.target.closest('.btn-same-stop');
+                if (btnSameStop) {
+                    const stopId = btnSameStop.dataset.stopId;
+                    const seq = btnSameStop.dataset.stopSeq;
+                    const stopName = btnSameStop.dataset.stopName;
+                    toggleSameStopDrawer(stopId, seq, stopName, btnSameStop);
+                    return;
+                }
+
+                const btnRefreshSameStop = e.target.closest('.btn-refresh-same-stop');
+                if (btnRefreshSameStop) {
+                    const stopId = btnRefreshSameStop.dataset.stopId;
+                    const seq = btnRefreshSameStop.dataset.stopSeq;
+                    const stopName = btnRefreshSameStop.dataset.stopName;
+                    const contentEl = document.getElementById(`same-stop-content-${seq}`);
+                    if (contentEl) loadSameStopDrawerData(stopId, seq, stopName, contentEl);
+                    return;
+                }
+
+                const btnCloseDrawer = e.target.closest('.btn-close-drawer');
+                if (btnCloseDrawer) {
+                    const seq = btnCloseDrawer.dataset.stopSeq;
+                    const drawer = document.getElementById(`same-stop-drawer-${seq}`);
+                    const btnSameStop = document.querySelector(`.btn-same-stop[data-stop-seq="${seq}"]`);
+                    if (drawer) drawer.classList.add('hidden');
+                    if (btnSameStop) {
+                        btnSameStop.classList.remove('bg-blue-600', 'text-white', 'dark:bg-blue-600', 'dark:text-white');
+                        btnSameStop.classList.add('bg-blue-50', 'text-blue-600', 'dark:bg-blue-900/30', 'dark:text-blue-300');
+                    }
+                    return;
+                }
+
+                const btnOpenModal = e.target.closest('.btn-open-modal');
+                if (btnOpenModal) {
+                    const stopId = btnOpenModal.dataset.stopId;
+                    const stopName = btnOpenModal.dataset.stopName;
+                    openStopModal(stopId, stopName);
+                    return;
+                }
+
+                const btnSwitchRoute = e.target.closest('.btn-switch-route');
+                if (btnSwitchRoute) {
+                    const route = btnSwitchRoute.dataset.route;
+                    const company = btnSwitchRoute.dataset.co;
+                    switchToRoute(route, company);
+                    return;
+                }
+            });
+
+            loadBusData();
+            startAutoRefresh();
+        }
+
+        function getText(key) {
+            return translations[currentLang]?.[key] || translations['zh-Hant']?.[key] || key;
+        }
+
+        function getDayText(dayKey) {
+            return translations[currentLang]?.days?.[dayKey] || translations['zh-Hant']?.days?.[dayKey] || dayKey;
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-lang]').forEach(el => {
+                el.textContent = getText(el.getAttribute('data-lang'));
+            });
+            document.title = `${getText('filter')} | Hong Kong Bus ETA System`;
+            routeInput.placeholder = currentLang === 'en' ? "e.g. 1A, 720, S1" : "例如: 1A, 720, S1 (循環線)";
+            if (currentTab === 'timetable') renderTimetable();
+        }
+
+        function updateClock() {
+            const locale = currentLang === 'en' ? 'en-GB' : 'zh-HK';
+            document.getElementById('live-clock').innerHTML = `<i class="fa-regular fa-clock text-amber-400 mr-1.5"></i>${new Date().toLocaleTimeString(locale)}`;
+        }
+
+        function updateBannerStyle() {
+            const style = brandStyles[currentCompany] || brandStyles['KMB'];
+            infoRoute.textContent = currentRoute;
+            companyBadge.textContent = style.label;
+            routeBanner.className = `p-5 rounded-2xl shadow-sm flex justify-between items-center transition-all duration-300 bg-gradient-to-r ${style.bg}`;
+            infoRoute.className = `text-3xl font-black bg-white px-3 py-0.5 rounded-xl shadow-sm shrink-0 ${style.text}`;
+        }
+
+        function detectLoopRoute() {
+            const stops = activeRouteData?.[currentDirection] || [];
+            isLoopRoute = stops.length > 1 && stops[0]?.stop === stops[stops.length - 1]?.stop;
+        }
+
+        function updateDirectionLabels() {
+            const stopsUnit = getText('stops_unit');
+            const outboundStops = activeRouteData?.outbound || [];
+            const inboundStops = activeRouteData?.inbound || [];
+            
+            const isOutLoop = outboundStops.length > 1 && outboundStops[0]?.stop === outboundStops[outboundStops.length - 1]?.stop;
+            const isInLoop = inboundStops.length > 1 && inboundStops[0]?.stop === inboundStops[inboundStops.length - 1]?.stop;
+            
+            const outboundTag = isOutLoop ? ` (${getText('loop')})` : "";
+            const inboundTag = isInLoop ? ` (${getText('loop')})` : "";
+            
+            dirOutbound.querySelector('span').textContent = outboundStops.length > 0 
+                ? `${getText('outbound')} (${outboundStops.length} ${stopsUnit})${outboundTag}` 
+                : `${getText('outbound')} (${getText('no_service')})`;
+            
+            dirInbound.querySelector('span').textContent = inboundStops.length > 0 
+                ? `${getText('inbound')} (${inboundStops.length} ${stopsUnit})${inboundTag}` 
+                : `${getText('inbound')} (${getText('no_service')})`;
+        }
+
+        function updateDirectionButtons() {
+            document.querySelectorAll('.dir-btn').forEach(btn => {
+                if (btn.dataset.dir === currentDirection) {
+                    btn.className = "dir-btn py-2.5 px-3 bg-blue-600 text-white text-sm rounded-xl font-medium shadow-md transition text-left flex justify-between items-center w-full";
+                    btn.querySelector('i').className = "fa-solid fa-circle-chevron-right text-xs opacity-100";
+                } else {
+                    btn.className = "dir-btn py-2.5 px-3 bg-slate-100 text-slate-600 text-sm rounded-xl font-medium hover:bg-slate-200 transition text-left flex justify-between items-center w-full dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600";
+                    btn.querySelector('i').className = "fa-solid fa-circle-chevron-right text-xs opacity-30";
+                }
+            });
+        }
+
+        function startAutoRefresh() {
+            stopAutoRefresh();
+            localClockTimer = setInterval(() => {
+                if (currentTab === "eta") {
+                    updateLocalCountdowns();
+                }
+            }, 1000);
+
+            apiSyncTimer = setInterval(() => {
+                if (!isFetching && currentTab === "eta") {
+                    renderEtaList(true);
+                }
+            }, 10000);
+        }
+
+        function stopAutoRefresh() {
+            if (localClockTimer) clearInterval(localClockTimer);
+            if (apiSyncTimer) clearInterval(apiSyncTimer);
+        }
+
+        function resetAutoRefresh() {
+            startAutoRefresh();
+        }
+
+        function updateLocalCountdowns() {
+            const etaItems = document.querySelectorAll('[data-eta-time]');
+            
+            etaItems.forEach(el => {
+                const timestamp = el.getAttribute('data-eta-time');
+                const isPrimary = el.getAttribute('data-is-primary') === 'true';
+                const mins = calculateMinutesLeft(timestamp);
+                
+                if (mins < 0) return;
+
+                const timeValEl = el.querySelector('.eta-val');
+                if (timeValEl) {
+                    timeValEl.textContent = mins;
+                }
+
+                if (isPrimary && mins <= 1) {
+                    if (timeValEl) timeValEl.className = "eta-val text-xl font-black text-emerald-600 dark:text-emerald-400";
+                }
+            });
+        }
+
+        function calculateMinutesLeft(etaTimestamp) {
+            if (!etaTimestamp) return -1;
+            const date = new Date(etaTimestamp);
+            if (isNaN(date.getTime())) return -1;
+            const diffMs = date.getTime() - Date.now();
+            if (diffMs < -60000) return -1;
+            const diffMins = Math.ceil(diffMs / 60000);
+            return diffMins < 0 ? 0 : diffMins;
+        }
+
+        function formatTimeToHM(isoString) {
+            if (!isoString) return "--:--";
+            const date = new Date(isoString);
+            if (isNaN(date.getTime())) return "--:--";
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
+
+        function getRmk(etaObj) {
+            if (!etaObj) return '';
+            let val = '';
+            if (currentLang === 'en') val = etaObj.rmk_en || etaObj.rmk_tc || '';
+            else if (currentLang === 'zh-Hans') val = etaObj.rmk_sc || etaObj.rmk_tc || '';
+            else val = etaObj.rmk_tc || '';
+            return typeof val === 'string' ? val : '';
+        }
+
+        async function fetchKmbRouteStops(route) {
+            try {
+                const encoded = encodeURIComponent(route);
+                const [outboundRes, inboundRes] = await Promise.all([
+                    fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${encoded}/outbound/1`),
+                    fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${encoded}/inbound/1`)
+                ]);
+                const outboundData = outboundRes.ok ? await outboundRes.json() : {};
+                const inboundData = inboundRes.ok ? await inboundRes.json() : {};
+                return {
+                    outbound: outboundData.data || [],
+                    inbound: inboundData.data || []
+                };
+            } catch {
+                return { outbound: [], inbound: [] };
+            }
+        }
+
+        async function fetchCtbRouteStops(route) {
+            try {
+                const encoded = encodeURIComponent(route);
+                const [outboundRes, inboundRes] = await Promise.all([
+                    fetch(`https://rt.data.gov.hk/v1/transport/citybus-nwfb/route-stop/CTB/${encoded}/outbound`),
+                    fetch(`https://rt.data.gov.hk/v1/transport/citybus-nwfb/route-stop/CTB/${encoded}/inbound`)
+                ]);
+                const outboundData = outboundRes.ok ? await outboundRes.json() : {};
+                const inboundData = inboundRes.ok ? await inboundRes.json() : {};
+                return {
+                    outbound: outboundData.data || [],
+                    inbound: inboundData.data || []
+                };
+            } catch {
+                return { outbound: [], inbound: [] };
+            }
+        }
+
+        async function fetchKmbRouteETA(route) {
+            try {
+                const encoded = encodeURIComponent(route);
+                const res = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route-eta/${encoded}`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return data.data || [];
+            } catch {
+                return [];
+            }
+        }
+
+        async function fetchCtbRouteETA(route) {
+            try {
+                const encoded = encodeURIComponent(route);
+                const res = await fetch(`https://rt.data.gov.hk/v1/transport/citybus-nwfb/route-eta/CTB/${encoded}`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return data.data || [];
+            } catch {
+                return [];
+            }
+        }
+
+        async function fetchKmbStopETA(stopId, route, dirToken) {
+            try {
+                const encStop = encodeURIComponent(stopId);
+                const res = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${encStop}`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                const list = data.data || [];
+                return list.filter(item => 
+                    item && 
+                    item.route === route && 
+                    (!item.dir || item.dir === dirToken)
+                );
+            } catch {
+                return [];
+            }
+        }
+
+        async function getKmbStopName(stopId) {
+            if (!stopId) return translations[currentLang].stop_load_error;
+            const cacheKey = `kmb_${stopId}`;
+            if (!stopDataCache.has(cacheKey)) {
+                try {
+                    const encoded = encodeURIComponent(stopId);
+                    const res = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${encoded}`);
+                    if (res.ok) {
+                        const data = (await res.json()).data;
+                        if (data) stopDataCache.set(cacheKey, data);
+                    }
+                } catch {
+                    return translations[currentLang].stop_load_error;
+                }
+            }
+            const data = stopDataCache.get(cacheKey);
+            if (!data) return translations[currentLang].stop_load_error;
+            if (currentLang === 'zh-Hans') return data.name_sc || data.name_tc || translations[currentLang].stop_load_error;
+            if (currentLang === 'en') return data.name_en || data.name_tc || translations[currentLang].stop_load_error;
+            return data.name_tc || translations[currentLang].stop_load_error;
+        }
+
+        async function getCtbStopName(stopId) {
+            if (!stopId) return translations[currentLang].stop_load_error;
+            const cacheKey = `ctb_${stopId}`;
+            if (!stopDataCache.has(cacheKey)) {
+                try {
+                    const encoded = encodeURIComponent(stopId);
+                    const res = await fetch(`https://rt.data.gov.hk/v1/transport/citybus-nwfb/stop/${encoded}`);
+                    if (res.ok) {
+                        const data = (await res.json()).data;
+                        if (data) stopDataCache.set(cacheKey, data);
+                    }
+                } catch {
+                    return translations[currentLang].stop_load_error;
+                }
+            }
+            const data = stopDataCache.get(cacheKey);
+            if (!data) return translations[currentLang].stop_load_error;
+            if (currentLang === 'zh-Hans') return data.name_sc || data.name_tc || translations[currentLang].stop_load_error;
+            if (currentLang === 'en') return data.name_en || data.name_tc || translations[currentLang].stop_load_error;
+            return data.name_tc || translations[currentLang].stop_load_error;
+        }
+
+        async function fetchCtbSingleStopETA(stopId, route) {
+            try {
+                const encStop = encodeURIComponent(stopId);
+                const encRoute = encodeURIComponent(route);
+                const res = await fetch(`https://rt.data.gov.hk/v1/transport/citybus-nwfb/eta/CTB/${encStop}/${encRoute}`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return data.data || [];
+            } catch {
+                return [];
+            }
+        }
+
+        async function fetchAllStopETA(stopId) {
+            const encStop = encodeURIComponent(stopId);
+            let results = [];
+
+            try {
+                const kmbRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${encStop}`);
+                if (kmbRes.ok) {
+                    const kmbData = await kmbRes.json();
+                    if (Array.isArray(kmbData.data)) {
+                        results = results.concat(kmbData.data);
+                    }
+                }
+            } catch (e) {}
+
+            try {
+                const ctbRes = await fetch(`https://rt.data.gov.hk/v1/transport/citybus-nwfb/eta/CTB/${encStop}`);
+                if (ctbRes.ok) {
+                    const ctbData = await ctbRes.json();
+                    if (Array.isArray(ctbData.data)) {
+                        results = results.concat(ctbData.data);
+                    }
+                }
+            } catch (e) {}
+
+            return results;
+        }
+
+        function closeStopModal() {
+            stopModal.classList.add('hidden');
+        }
+
+        function getTimeLightBadge(mins) {
+            if (mins <= 1) {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-extrabold text-white rounded bg-emerald-500 shadow-xs animate-pulse">
+                    <i class="fa-solid fa-bus text-[9px]"></i> ${getText('arrived')}
+                </span>`;
+            } else if (mins <= 3) {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 rounded">
+                    <i class="fa-solid fa-person-running text-[9px]"></i> ${getText('arr_shortly')}
+                </span>`;
+            } else if (mins <= 6) {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400 rounded">
+                    <i class="fa-regular fa-clock text-[9px]"></i> ${mins} ${getText('min')}
+                </span>`;
+            } else {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 rounded">
+                    <i class="fa-regular fa-clock text-[9px]"></i> ${mins} ${getText('min')}
+                </span>`;
+            }
+        }
+
+        async function toggleSameStopDrawer(stopId, seq, stopName, btnEl) {
+            const drawer = document.getElementById(`same-stop-drawer-${seq}`);
+            const content = document.getElementById(`same-stop-content-${seq}`);
+            if (!drawer || !content) return;
+
+            const isHidden = drawer.classList.contains('hidden');
+            
+            if (isHidden) {
+                drawer.classList.remove('hidden');
+                btnEl.classList.add('bg-blue-600', 'text-white', 'dark:bg-blue-600', 'dark:text-white');
+                btnEl.classList.remove('bg-blue-50', 'text-blue-600', 'dark:bg-blue-900/30', 'dark:text-blue-300');
+                
+                await loadSameStopDrawerData(stopId, seq, stopName, content);
+            } else {
+                drawer.classList.add('hidden');
+                btnEl.classList.remove('bg-blue-600', 'text-white', 'dark:bg-blue-600', 'dark:text-white');
+                btnEl.classList.add('bg-blue-50', 'text-blue-600', 'dark:bg-blue-900/30', 'dark:text-blue-300');
+            }
+        }
+
+        async function loadSameStopDrawerData(stopId, seq, stopName, contentEl) {
+            if (!stopId || !contentEl) return;
+            const reqId = (drawerRequestIds[seq] || 0) + 1;
+            drawerRequestIds[seq] = reqId;
+
+            contentEl.innerHTML = `
+                <div class="col-span-full text-center py-4 text-slate-400 text-xs">
+                    <i class="fa-solid fa-spinner animate-spin text-blue-500 mr-1.5"></i> ${getText('loading_stop_eta')}
+                </div>
+            `;
+
+            try {
+                const list = await fetchAllStopETA(stopId);
+
+                if (drawerRequestIds[seq] !== reqId) return;
+
+                if (list.length === 0) {
+                    contentEl.innerHTML = `<div class="col-span-full text-center py-3 text-slate-400 text-xs">${getText('no_other_routes')}</div>`;
+                    return;
+                }
+
+                const grouped = {};
+                list.forEach(item => {
+                    if (!item || !item.eta || !item.route) return;
+                    const mins = calculateMinutesLeft(item.eta);
+                    if (mins < 0) return;
+
+                    let dest = item.dest_tc || '';
+                    if (currentLang === 'zh-Hans') dest = item.dest_sc || item.dest_tc || '';
+                    if (currentLang === 'en') dest = item.dest_en || item.dest_tc || '';
+                    if (!dest.trim()) dest = getText('terminal');
+
+                    const rawCo = item.co ? item.co.toUpperCase() : currentCompany;
+                    const normalizedCo = rawCo === 'NWFB' ? 'CTB' : rawCo;
+
+                    const groupKey = `${item.route}_${dest}`;
+                    if (!grouped[groupKey]) {
+                        grouped[groupKey] = {
+                            route: item.route,
+                            dest: dest,
+                            co: normalizedCo,
+                            etas: []
+                        };
+                    }
+
+                    if (!grouped[groupKey].etas.some(e => e.eta === item.eta)) {
+                        grouped[groupKey].etas.push({
+                            eta: item.eta,
+                            mins: mins,
+                            rmk: getRmk(item)
+                        });
+                    }
+                });
+
+                const groupArray = Object.values(grouped);
+                if (groupArray.length === 0) {
+                    contentEl.innerHTML = `<div class="col-span-full text-center py-3 text-slate-400 text-xs">${getText('no_other_routes')}</div>`;
+                    return;
+                }
+
+                groupArray.sort((a, b) => a.route.localeCompare(b.route, undefined, { numeric: true }));
+
+                contentEl.innerHTML = "";
+                const minUnit = getText('min');
+
+                groupArray.forEach(group => {
+                    group.etas.sort((a, b) => new Date(a.eta) - new Date(b.eta));
+                    const validEtas = group.etas;
+
+                    const etasHTML = validEtas.map((e) => {
+                        const timeStr = formatTimeToHM(e.eta);
+                        let timeColor = "text-blue-600 dark:text-blue-400 font-bold";
+                        if (e.mins <= 1) timeColor = "text-emerald-600 dark:text-emerald-400 font-black";
+                        else if (e.mins <= 3) timeColor = "text-amber-600 dark:text-amber-400 font-bold";
+
+                        return `<span data-eta-time="${e.eta}" class="inline-flex items-center gap-0.5"><span class="eta-val ${timeColor}">${e.mins}</span><span class="text-[10px] ${timeColor}">${minUnit}</span> <span class="text-[10px] text-slate-400 font-mono">(${timeStr})</span></span>`;
+                    }).join('<span class="text-slate-300 dark:text-slate-600 mx-1">|</span>');
+
+                    const card = document.createElement('div');
+                    card.className = "p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between gap-2 shadow-2xs";
+
+                    card.innerHTML = `
+                        <div class="min-w-0 flex-grow">
+                            <div class="flex items-center gap-1.5 mb-1">
+                                <span class="text-xs font-black px-2 py-0.5 rounded bg-blue-600 text-white dark:bg-blue-500 shrink-0">${escapeHtml(group.route)}</span>
+                                <span class="text-xs font-bold text-slate-800 dark:text-slate-200 truncate"><span class="text-[10px] text-slate-400 font-normal mr-0.5">${getText('to')}</span>${escapeHtml(group.dest)}</span>
+                            </div>
+                            <div class="text-xs font-mono flex items-center flex-wrap gap-y-0.5">
+                                ${etasHTML}
+                            </div>
+                        </div>
+                        <button type="button" data-route="${escapeHtml(group.route)}" data-co="${escapeHtml(group.co)}" class="btn-switch-route text-[11px] font-bold px-2 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-blue-600 transition shrink-0 flex items-center gap-1 cursor-pointer">
+                            <span>${getText('switch_route')}</span> <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                        </button>
+                    `;
+                    contentEl.appendChild(card);
+                });
+
+            } catch (err) {
+                if (drawerRequestIds[seq] !== reqId) return;
+                console.error("Error loading drawer same-stop ETAs:", err);
+                contentEl.innerHTML = `<div class="col-span-full text-center py-3 text-red-500 text-xs">${getText('stop_load_error')}</div>`;
+            }
+        }
+
+        async function openStopModal(stopId, stopName) {
+            if (!stopId) return;
+            const requestId = ++modalRequestId;
+            modalStopName.textContent = stopName || '--';
+            modalContent.innerHTML = `
+                <div class="text-center py-8 text-slate-400">
+                    <i class="fa-solid fa-circle-notch animate-spin text-2xl text-blue-500 mb-2"></i>
+                    <p class="text-xs font-medium">${getText('loading_stop_eta')}</p>
+                </div>
+            `;
+            stopModal.classList.remove('hidden');
+
+            try {
+                const list = await fetchAllStopETA(stopId);
+
+                if (requestId !== modalRequestId || stopModal.classList.contains('hidden')) return;
+
+                if (list.length === 0) {
+                    modalContent.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">${getText('no_other_routes')}</div>`;
+                    return;
+                }
+
+                const grouped = {};
+                list.forEach(item => {
+                    if (!item || !item.eta || !item.route) return;
+                    const mins = calculateMinutesLeft(item.eta);
+                    if (mins < 0) return;
+
+                    let dest = item.dest_tc || '';
+                    if (currentLang === 'zh-Hans') dest = item.dest_sc || item.dest_tc || '';
+                    if (currentLang === 'en') dest = item.dest_en || item.dest_tc || '';
+                    if (!dest.trim()) dest = getText('terminal');
+
+                    const rawCo = item.co ? item.co.toUpperCase() : currentCompany;
+                    const normalizedCo = rawCo === 'NWFB' ? 'CTB' : rawCo;
+
+                    const groupKey = `${item.route}_${dest}`;
+                    if (!grouped[groupKey]) {
+                        grouped[groupKey] = {
+                            route: item.route,
+                            dest: dest,
+                            co: normalizedCo,
+                            etas: []
+                        };
+                    }
+
+                    if (!grouped[groupKey].etas.some(e => e.eta === item.eta)) {
+                        grouped[groupKey].etas.push({
+                            eta: item.eta,
+                            mins: mins,
+                            rmk: getRmk(item)
+                        });
+                    }
+                });
+
+                const groupArray = Object.values(grouped);
+                if (groupArray.length === 0) {
+                    modalContent.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">${getText('no_other_routes')}</div>`;
+                    return;
+                }
+
+                groupArray.sort((a, b) => a.route.localeCompare(b.route, undefined, { numeric: true }));
+
+                modalContent.innerHTML = "";
+                const minUnit = getText('min');
+
+                groupArray.forEach(group => {
+                    group.etas.sort((a, b) => new Date(a.eta) - new Date(b.eta));
+                    const validEtas = group.etas;
+                    const firstBus = validEtas[0];
+
+                    const statusLight = firstBus ? getTimeLightBadge(firstBus.mins) : '';
+
+                    const etasHTML = validEtas.map((e, idx) => {
+                        const timeStr = formatTimeToHM(e.eta);
+                        const rmkTag = e.rmk ? `<span class="text-[9px] bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-300 px-1 py-0.5 rounded">${escapeHtml(e.rmk)}</span>` : '';
+
+                        let timeColor = "text-blue-600 dark:text-blue-400";
+                        if (e.mins <= 1) timeColor = "text-emerald-600 dark:text-emerald-400 font-extrabold";
+                        else if (e.mins <= 3) timeColor = "text-amber-600 dark:text-amber-400 font-bold";
+
+                        if (idx === 0) {
+                            return `<div data-eta-time="${e.eta}" data-is-primary="true" class="flex items-center gap-1.5"><span class="eta-val text-xl font-black ${timeColor}">${e.mins}</span><span class="text-xs text-slate-400 font-medium">${minUnit}</span> <span class="text-[11px] text-slate-400 font-mono">(${timeStr})</span> ${rmkTag}</div>`;
+                        } else {
+                            return `<div data-eta-time="${e.eta}" class="text-xs text-slate-500 dark:text-slate-400 font-mono"><span class="eta-val font-bold text-slate-700 dark:text-slate-300">${e.mins}</span>${minUnit} (${timeStr}) ${rmkTag}</div>`;
+                        }
+                    }).join('<span class="text-slate-300 dark:text-slate-600">|</span>');
+
+                    const card = document.createElement('div');
+                    card.className = "p-3.5 rounded-xl bg-slate-50 dark:bg-slate-700/40 border border-slate-100 dark:border-slate-700/80 flex flex-col gap-2.5 transition hover:border-blue-200 dark:hover:border-blue-800 shadow-xs";
+
+                    card.innerHTML = `
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <span class="text-base font-black px-2.5 py-0.5 rounded-lg bg-blue-600 text-white dark:bg-blue-500 shadow-xs shrink-0">${escapeHtml(group.route)}</span>
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-xs text-slate-400 font-medium">${getText('to')}</span>
+                                        <span class="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(group.dest)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                ${statusLight}
+                                <button type="button" data-route="${escapeHtml(group.route)}" data-co="${escapeHtml(group.co)}" class="btn-switch-route text-xs font-bold px-2.5 py-1 rounded-lg bg-white text-blue-600 hover:bg-blue-600 hover:text-white dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white transition flex items-center gap-1 border border-slate-200 dark:border-slate-600 cursor-pointer shadow-2xs">
+                                    <i class="fa-solid fa-arrow-right-to-bracket text-[10px]"></i> ${getText('switch_route')}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex items-center flex-wrap gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-600/50">
+                            ${etasHTML}
+                        </div>
+                    `;
+                    modalContent.appendChild(card);
+                });
+
+            } catch (err) {
+                if (requestId !== modalRequestId || stopModal.classList.contains('hidden')) return;
+                console.error("Error fetching stop ETAs:", err);
+                modalContent.innerHTML = `<div class="text-center py-8 text-red-500 text-sm">${getText('stop_load_error')}</div>`;
+            }
+        }
+
+        function switchToRoute(routeNum, companyCode) {
+            closeStopModal();
+            let matchedCo = companyCode ? companyCode.toUpperCase() : currentCompany;
+            if (matchedCo === "NWFB") matchedCo = "CTB";
+            if (matchedCo === "KMB" || matchedCo === "LWB" || matchedCo === "CTB") {
+                companySelect.value = matchedCo;
+                currentCompany = matchedCo;
+            }
+            routeInput.value = routeNum;
+            loadBusData();
+        }
+
+        async function loadBusData() {
+            const requestId = ++fetchRequestId;
+            currentRoute = routeInput.value.trim().toUpperCase();
+            if (!currentRoute) {
+                alert(getText('search_error'));
+                return;
+            }
+
+            isFetching = true;
+            activeRouteData = null;
+            updateBannerStyle();
+            infoDirection.textContent = getText('loading');
+            stopsContainer.innerHTML = `<div class="text-center py-12 text-slate-400"><i class="fa-solid fa-circle-notch animate-spin text-2xl text-blue-500 mb-2"></i><p>${getText('loading')}</p></div>`;
+
+            try {
+                let fetchedData = null;
+                if (currentCompany === "KMB" || currentCompany === "LWB") {
+                    fetchedData = await fetchKmbRouteStops(currentRoute);
+                } else if (currentCompany === "CTB") {
+                    fetchedData = await fetchCtbRouteStops(currentRoute);
+                }
+
+                if (requestId !== fetchRequestId) return;
+
+                if (!fetchedData || (fetchedData.outbound.length === 0 && fetchedData.inbound.length === 0)) {
+                    throw new Error(getText('search_error'));
+                }
+
+                activeRouteData = fetchedData;
+
+                if ((activeRouteData[currentDirection] || []).length === 0) {
+                    const alternateDir = currentDirection === "outbound" ? "inbound" : "outbound";
+                    if ((activeRouteData[alternateDir] || []).length > 0) {
+                        currentDirection = alternateDir;
+                    }
+                }
+
+                detectLoopRoute();
+                updateDirectionLabels();
+                updateDirectionButtons();
+                await renderTabsContent();
+                resetAutoRefresh();
+            } catch (err) {
+                if (requestId !== fetchRequestId) return;
+                stopsContainer.innerHTML = `<div class="text-center py-12 text-slate-400"><i class="fa-solid fa-circle-exclamation text-2xl text-amber-500 mb-1"></i><p>${escapeHtml(err.message)}</p></div>`;
+                timetableContainer.innerHTML = `<div class="text-center py-12 text-slate-400">${getText('no_schedule')}</div>`;
+                infoDirection.textContent = getText('not_found');
+            } finally {
+                if (requestId === fetchRequestId) {
+                    isFetching = false;
+                }
+            }
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            if (tab === 'eta') {
+                tabBtnEta.className = "flex-1 py-2.5 text-sm font-bold rounded-lg transition bg-white text-blue-600 shadow-sm flex justify-center items-center gap-2 dark:bg-slate-800 dark:text-blue-400";
+                tabBtnTimetable.className = "flex-1 py-2.5 text-sm font-medium rounded-lg transition text-slate-600 hover:text-slate-900 flex justify-center items-center gap-2 dark:text-slate-400 dark:hover:text-white";
+                panelEta.classList.remove('hidden');
+                panelTimetable.classList.add('hidden');
+                renderEtaList();
+                resetAutoRefresh();
+            } else {
+                tabBtnTimetable.className = "flex-1 py-2.5 text-sm font-bold rounded-lg transition bg-white text-blue-600 shadow-sm flex justify-center items-center gap-2 dark:bg-slate-800 dark:text-blue-400";
+                tabBtnEta.className = "flex-1 py-2.5 text-sm font-medium rounded-lg transition text-slate-600 hover:text-slate-900 flex justify-center items-center gap-2 dark:text-slate-400 dark:hover:text-white";
+                panelTimetable.classList.remove('hidden');
+                panelEta.classList.add('hidden');
+                renderTimetable();
+                stopAutoRefresh();
+            }
+        }
+
+        async function renderTabsContent() {
+            if (currentTab === "eta") {
+                await renderEtaList();
+            } else {
+                renderTimetable();
+            }
+        }
+
+        async function renderEtaList(isSilent = false) {
+            if (!activeRouteData) return;
+            const thisRenderId = ++renderRequestId;
+            const requestId = fetchRequestId;
+
+            const stops = activeRouteData[currentDirection] || [];
+            if (stops.length === 0) {
+                stopsContainer.innerHTML = `<div class="text-center py-12 text-slate-400">${getText('no_data')}</div>`;
+                return;
+            }
+
+            const totalStops = stops.length;
+            const dirToken = currentDirection === "outbound" ? "O" : "I";
+
+            let routeEtaBatch = [];
+            if (currentCompany === "KMB" || currentCompany === "LWB") {
+                routeEtaBatch = await fetchKmbRouteETA(currentRoute);
+            } else if (currentCompany === "CTB") {
+                routeEtaBatch = await fetchCtbRouteETA(currentRoute);
+            }
+
+            const rawRenderData = await mapWithConcurrency(stops, 6, async (stopObj, index) => {
+                if (!stopObj) return null;
+                const stopId = stopObj.stop;
+                const seq = Number(stopObj.seq || (index + 1));
+                const namePromise = currentCompany === "CTB" ? getCtbStopName(stopId) : getKmbStopName(stopId);
+                
+                let etaPromise;
+                if (currentCompany === "KMB" || currentCompany === "LWB") {
+                    let filtered = [];
+                    if (routeEtaBatch && routeEtaBatch.length > 0) {
+                        filtered = routeEtaBatch.filter(item => 
+                            item && 
+                            (item.stop === stopId || (item.dir === dirToken && Number(item.seq) === seq)) && 
+                            (item.service_type == 1 || item.service_type === undefined)
+                        );
+                    }
+                    if (filtered.length === 0) {
+                        etaPromise = fetchKmbStopETA(stopId, currentRoute, dirToken);
+                    } else {
+                        etaPromise = Promise.resolve(filtered);
+                    }
+                } else {
+                    let filtered = [];
+                    if (routeEtaBatch && routeEtaBatch.length > 0) {
+                        filtered = routeEtaBatch.filter(item => {
+                            if (!item) return false;
+                            const matchDir = !item.dir || 
+                                             item.dir === dirToken || 
+                                             (dirToken === "O" && (item.dir === "outbound" || item.dir === "O")) || 
+                                             (dirToken === "I" && (item.dir === "inbound" || item.dir === "I"));
+                            if (!matchDir) return false;
+                            return item.stop === stopId || parseInt(item.seq) === seq;
+                        });
+                    }
+
+                    if (filtered.length === 0) {
+                        etaPromise = fetchCtbSingleStopETA(stopId, currentRoute);
+                    } else {
+                        etaPromise = Promise.resolve(filtered);
+                    }
+                }
+
+                try {
+                    const [name, etaList] = await Promise.all([namePromise, etaPromise]);
+                    return {
+                        seq,
+                        stopId,
+                        name: name || getText('stop_load_error'),
+                        etaList: etaList || [],
+                        isSecondLast: index === totalStops - 2,
+                        isEndTerminal: index === totalStops - 1
+                    };
+                } catch {
+                    return {
+                        seq,
+                        stopId,
+                        name: getText('stop_load_error'),
+                        etaList: [],
+                        isSecondLast: index === totalStops - 2,
+                        isEndTerminal: index === totalStops - 1
+                    };
+                }
+            });
+
+            if (requestId !== fetchRequestId || thisRenderId !== renderRequestId) return;
+
+            const renderData = rawRenderData.filter(Boolean);
+            renderData.sort((a, b) => a.seq - b.seq);
+
+            if (renderData.length > 0) {
+                const destName = renderData[renderData.length - 1].name;
+                infoDirection.textContent = isLoopRoute 
+                    ? `${getText('loop')} (${destName} ${getText('loop_point')})`
+                    : `${getText('to')} ${destName}`;
+            }
+
+            if (!isSilent) {
+                stopsContainer.innerHTML = "";
+            }
+
+            const minUnit = getText('min');
+
+            renderData.forEach(item => {
+                try {
+                    let row = isSilent ? document.getElementById(`stop-row-${item.seq}`) : null;
+                    if (!row) {
+                        row = document.createElement('div');
+                        row.id = `stop-row-${item.seq}`;
+                    }
+
+                    if (item.name === getText('stop_load_error')) row.classList.add('error-row');
+                    row.className = `grid grid-cols-12 px-4 py-3.5 items-center hover:bg-slate-50 transition dark:hover:bg-slate-700/50`;
+
+                    let etaHTML = `<span class="text-xs text-slate-400 dark:text-slate-500">${getText('no_data')}</span>`;
+                    if (item.etaList && item.etaList.length > 0) {
+                        const validEtaList = item.etaList
+                            .filter(etaObj => etaObj && calculateMinutesLeft(etaObj.eta) >= 0)
+                            .sort((a, b) => new Date(a.eta) - new Date(b.eta))
+                            .slice(0, 3);
+
+                        if (validEtaList.length > 0) {
+                            etaHTML = validEtaList.map((etaObj, index) => {
+                                if (!etaObj.eta) return "";
+                                const mins = calculateMinutesLeft(etaObj.eta);
+                                const timeStr = formatTimeToHM(etaObj.eta);
+                                const rmkStr = getRmk(etaObj);
+                                const rmk = rmkStr ? ` <span class="text-[10px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded font-normal dark:bg-slate-700 dark:text-slate-400">${escapeHtml(rmkStr)}</span>` : '';
+
+                                if (index === 0) {
+                                    if (item.seq === 1) {
+                                        if (mins <= 5) {
+                                            return `<div class="mb-1" data-eta-time="${etaObj.eta}" data-is-primary="true"><div><span class="eta-val text-xl font-black text-amber-600">${mins}</span> <span class="text-xs text-slate-400 font-medium dark:text-slate-500">${minUnit}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `預計 ${timeStr}`}<span class="ml-2 text-amber-600 font-medium">(${getText('departs_in')})</span></div></div>`;
+                                        } else {
+                                            return `<div class="mb-1" data-eta-time="${etaObj.eta}" data-is-primary="true"><div class="flex items-center gap-2"><span class="eta-val text-xl font-black text-emerald-600">${mins}</span><span class="text-xs text-slate-400 font-medium dark:text-slate-500">${minUnit}</span><span class="text-[10px] terminal-badge text-white px-1.5 py-0.5 rounded">${getText('terminal')}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `Est. depart at ${timeStr}` : `預計開出 ${timeStr}`}</div></div>`;
+                                        }
+                                    }
+                                    else if (isLoopRoute && item.isEndTerminal) {
+                                        if (mins <= 1) {
+                                            return `<div class="mb-1"><div class="flex items-center gap-2"><span class="text-sm font-bold text-white px-2 py-1 rounded blink-warning arrived-loop-status"><i class="fas fa-redo mr-1"></i>${getText('back_to_start')}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `循環時間 ${timeStr}`}<span class="ml-2 text-purple-600 font-medium">(${getText('looping')})</span></div></div>`;
+                                        } else if (mins <= 3) {
+                                            return `<div class="mb-1" data-eta-time="${etaObj.eta}" data-is-primary="true"><div><span class="eta-val text-xl font-black text-amber-600">${mins}</span> <span class="text-xs text-slate-400 font-medium dark:text-slate-500">${minUnit}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `預計 ${timeStr}`}<span class="ml-2 text-amber-600 font-medium">(${getText('back_shortly')})</span></div></div>`;
+                                        } else {
+                                            return `<div class="mb-1" data-eta-time="${etaObj.eta}" data-is-primary="true"><div><span class="eta-val text-xl font-black text-emerald-600">${mins}</span> <span class="text-xs text-slate-400 font-medium dark:text-slate-500">${minUnit}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `預計 ${timeStr}`} <span class="ml-2 text-blue-600 font-medium">(${getText('loop_point')})</span></div></div>`;
+                                        }
+                                    }
+                                    else if (item.isEndTerminal) {
+                                        if (mins <= 1) {
+                                            return `<div class="mb-1"><div class="flex items-center gap-2"><span class="text-sm font-bold text-white px-2 py-1 rounded blink-warning arrived-terminal-status"><i class="fas fa-flag-checkered mr-1"></i>${getText('arrive_terminal')}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `抵達時間 ${timeStr}`}<span class="ml-2 text-orange-600 font-medium">(${getText('service_ends')})</span></div></div>`;
+                                        } else if (mins <= 3) {
+                                            return `<div class="mb-1" data-eta-time="${etaObj.eta}" data-is-primary="true"><div><span class="eta-val text-xl font-black text-amber-600">${mins}</span> <span class="text-xs text-slate-400 font-medium dark:text-slate-500">${minUnit}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `預計 ${timeStr}`}<span class="ml-2 text-amber-600 font-medium">(${getText('arr_terminal_shortly')})</span></div></div>`;
+                                        } else {
+                                            return `<div class="mb-1" data-eta-time="${etaObj.eta}" data-is-primary="true"><div><span class="eta-val text-xl font-black text-emerald-600">${mins}</span> <span class="text-xs text-slate-400 font-medium dark:text-slate-500">${minUnit}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `預計 ${timeStr}`}</div></div>`;
+                                        }
+                                    } else {
+                                        if (mins <= 1) {
+                                            return `<div class="mb-1"><div class="flex items-center gap-2"><span class="text-sm font-bold text-white px-2 py-1 rounded blink-warning arrived-status"><i class="fas fa-bus mr-1"></i>${getText('arrived')}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `到站時間 ${timeStr}`}<span class="ml-2 text-emerald-600 font-medium">(${getText('boarding_now')})</span></div></div>`;
+                                        } else if (mins <= 3) {
+                                            return `<div class="mb-1" data-eta-time="${etaObj.eta}" data-is-primary="true"><div><span class="eta-val text-xl font-black text-amber-600">${mins}</span> <span class="text-xs text-slate-400 font-medium dark:text-slate-500">${minUnit}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `預計 ${timeStr}`}<span class="ml-2 text-amber-600 font-medium">(${getText('arr_shortly')})</span></div></div>`;
+                                        } else {
+                                            return `<div class="mb-1" data-eta-time="${etaObj.eta}" data-is-primary="true"><div><span class="eta-val text-xl font-black text-emerald-600">${mins}</span> <span class="text-xs text-slate-400 font-medium dark:text-slate-500">${minUnit}</span>${rmk}</div><div class="text-[11px] text-slate-400 font-mono tracking-wide mt-0.5 dark:text-slate-500"><i class="fa-regular fa-clock text-[10px] mr-0.5"></i>${currentLang === 'en' ? `at ${timeStr}` : `預計 ${timeStr}`}</div></div>`;
+                                        }
+                                    }
+                                } else {
+                                    const timeClass = mins <= 5 ? "text-amber-600" : "text-slate-600 dark:text-slate-400";
+                                    return `<div data-eta-time="${etaObj.eta}" class="inline-flex flex-col items-end text-right"><span class="text-xs ${timeClass} font-bold"><span class="eta-val">${mins}</span>${minUnit}</span><span class="text-[10px] text-slate-400 font-mono dark:text-slate-500">${timeStr}</span></div>`;
+                                }
+                            }).join('<span class="text-slate-300 mx-2 text-xs self-center dark:text-slate-600">|</span>');
+                        }
+                    }
+
+                    if (!isSilent) {
+                        row.innerHTML = `
+                            <div class="col-span-1 text-center text-xs font-mono font-bold text-slate-400 dark:text-slate-500">
+                                <span class="inline-block w-5 h-5 rounded-full bg-slate-100 leading-5 dark:bg-slate-700">${item.seq}</span>
+                            </div>
+                            <div class="col-span-6 pr-2">
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <p class="font-bold text-slate-800 text-sm md:text-base tracking-wide dark:text-slate-100">${escapeHtml(item.name)}</p>
+                                    <button type="button" data-stop-id="${escapeHtml(item.stopId)}" data-stop-seq="${item.seq}" data-stop-name="${escapeHtml(item.name)}" class="btn-same-stop text-[10px] font-medium px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200/80 transition dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800 dark:hover:bg-blue-900/50 flex items-center gap-1 cursor-pointer">
+                                        <i class="fa-solid fa-layer-group text-[9px]"></i> <span>${getText('same_stop_routes')}</span>
+                                    </button>
+                                    <button type="button" data-stop-id="${escapeHtml(item.stopId)}" data-stop-name="${escapeHtml(item.name)}" class="btn-open-modal text-[10px] font-medium px-1.5 py-0.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-slate-100 transition dark:hover:bg-slate-700 cursor-pointer" title="彈出視窗顯示">
+                                        <i class="fa-solid fa-expand text-[9px]"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-span-5 text-right flex justify-end items-center gap-1">
+                                <div class="flex items-center justify-end flex-wrap eta-box">${etaHTML}</div>
+                            </div>
+                            <div id="same-stop-drawer-${item.seq}" class="col-span-12 hidden mt-2.5 pt-2.5 pb-2 px-3 bg-slate-50/90 dark:bg-slate-900/60 rounded-xl border border-slate-200/80 dark:border-slate-700/80 transition-all">
+                                <div class="flex justify-between items-center mb-2 pb-1 border-b border-slate-200/60 dark:border-slate-700/60">
+                                    <span class="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-bus-simple text-blue-500"></i> ${escapeHtml(item.name)} - ${getText('same_stop_title')}
+                                    </span>
+                                    <div class="flex items-center gap-1.5">
+                                        <button type="button" data-stop-id="${escapeHtml(item.stopId)}" data-stop-seq="${item.seq}" data-stop-name="${escapeHtml(item.name)}" class="btn-refresh-same-stop text-[10px] text-slate-500 hover:text-blue-600 dark:text-slate-400 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center gap-1 cursor-pointer">
+                                            <i class="fa-solid fa-rotate-right"></i> ${getText('refresh_btn')}
+                                        </button>
+                                        <button type="button" data-stop-seq="${item.seq}" class="btn-close-drawer text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer">
+                                            <i class="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="same-stop-content-${item.seq}" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left max-h-64 overflow-y-auto pr-1">
+                                </div>
+                            </div>
+                        `;
+                        stopsContainer.appendChild(row);
+                    } else {
+                        const etaBox = row.querySelector('.eta-box');
+                        if (etaBox) etaBox.innerHTML = etaHTML;
+                    }
+                } catch (rowError) {
+                    console.error("Error rendering row:", rowError);
+                }
+            });
+        }
+
+        function renderTimetable() {
+            timetableContainer.innerHTML = "";
+            const fallbackData = [
+                { day: "weekdays", periods: [{ t: "06:00 - 07:00", f: "12 - 15 min" }, { t: "07:00 - 09:00", f: "6 - 10 min" }, { t: "09:00 - 17:00", f: "10 - 15 min" }, { t: "17:00 - 19:30", f: "7 - 12 min" }, { t: "19:30 - 23:30", f: "15 - 20 min" }] },
+                { day: "weekends", periods: [{ t: "06:00 - 10:00", f: "15 - 20 min" }, { t: "10:00 - 21:00", f: "10 - 15 min" }, { t: "21:00 - 23:30", f: "15 - 20 min" }] }
+            ];
+            
+            let routeTimetable = null;
+            if (staticTimetables[currentCompany] && staticTimetables[currentCompany][currentRoute]) {
+                routeTimetable = staticTimetables[currentCompany][currentRoute][currentDirection];
+            }
+
+            const displayData = routeTimetable || fallbackData;
+
+            if (dailyRouteMetadata.weather.isSevere) {
+                const lastBusTime = "22:00 (預計)";
+                const alertCard = document.createElement('div');
+                alertCard.className = "p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs font-bold dark:bg-red-950/40 dark:border-red-900 dark:text-red-300 flex items-center justify-between";
+                alertCard.innerHTML = `
+                    <span><i class="fa-solid fa-cloud-bolt mr-1.5 text-red-500"></i>天氣預警：當日特別營運最後尾班車時間</span>
+                    <span class="text-sm font-black font-mono bg-red-600 text-white px-2.5 py-0.5 rounded shadow-xs">${lastBusTime}</span>
+                `;
+                timetableContainer.appendChild(alertCard);
+            }
+
+            displayData.forEach(group => {
+                const card = document.createElement('div');
+                card.className = "border border-slate-100 rounded-xl overflow-hidden shadow-sm dark:border-slate-700";
+                const dayKey = group.day;
+                const dayText = getDayText(dayKey);
+                
+                let rowsHTML = "";
+                group.periods.forEach(p => {
+                    rowsHTML += `
+                        <div class="grid grid-cols-2 px-4 py-2.5 text-sm border-b border-slate-50 last:border-none hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/50">
+                            <div class="font-mono text-slate-600 flex items-center gap-2 dark:text-slate-400"><i class="fa-regular fa-clock text-xs text-slate-400 dark:text-slate-500"></i> ${escapeHtml(p.t)}</div>
+                            <div class="text-right font-bold text-blue-600 dark:text-blue-400">${escapeHtml(p.f)}</div>
+                        </div>
+                    `;
+                });
+
+                card.innerHTML = `
+                    <div class="bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 flex items-center gap-2 border-b border-slate-200 dark:bg-slate-700/50 dark:text-slate-300 dark:border-slate-700">
+                        <i class="fa-solid fa-calendar-day text-blue-500"></i> ${escapeHtml(dayText)}
+                    </div>
+                    <div class="divide-y divide-slate-100 bg-white dark:divide-slate-700 dark:bg-slate-800">
+                        ${rowsHTML}
+                    </div>
+                `;
+                timetableContainer.appendChild(card);
+            });
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
