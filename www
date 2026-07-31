@@ -1,8 +1,0 @@
-hk-bus-eta-apk/
-├── www/                    ← 你的网站文件目录
-│   └── index.html          ← 把巴士ETA的HTML内容粘到这里
-├── package.json            ← 依赖声明
-├── capacitor.config.json   ← Capacitor配置
-└── .github/
-    └── workflows/
-        └── build-apk.yml   ← GitHub Actions 构建脚本
