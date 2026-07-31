@@ -1,6 +1,6 @@
 {
   "appId": "com.benyeung08.busapp",
-  "appName": "香港巴士ETA",
+  "appName": "benyeung08巴士App",
   "webDir": "www",
   "server": {
     "androidScheme": "https"
