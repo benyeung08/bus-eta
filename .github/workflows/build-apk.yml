@@ -1,77 +1,62 @@
-name: Build Android APK
-
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  workflow_dispatch:
+name: Build APK
+on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    # 【升级1】强制开启 Debug 模式 + 强制锁定 Node.js 版本
+    env:
+      ACTIONS_STEP_DEBUG: true
+      NODE_OPTIONS: --max-old-space-size=4096
+
     steps:
-      # 1. 拉取代码（确保获取完整历史，避免子模块问题）
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          persist-credentials: true 
 
-      # 2. 设定 Java 17 环境
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      # 3. 设定 Node.js 18
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '24'
 
-      # 4. 设定国内镜像源（加速依赖下载）
-      - name: Configure mirrors
-        env:
-          MAVEN_REPO: https://maven.aliyun.com/repository/google
+      # 【升级2】安装 Java 和 Android SDK（Capacitor 打包 APK 必需）
+      - name: Setup Java and Android SDK
         run: |
-          echo "MAVEN_REPO=$MAVEN_REPO" >> $GITHUB_ENV
-          npm config set registry https://registry.npmmirror.com
-          npm config set ELECTRON_MIRROR https://npmmirror.com/mirrors/electron/
-          npm config set CHROMEDRIVER_CDNURL https://npmmirror.com/mirrors/chromedriver/
+          # 安装 OpenJDK 17 (Capacitor 推荐版本)
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk
+          
+          # 设置 Java 环境变量
+          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+          echo "ANDROID_HOME=/usr/local/android-sdk" >> $GITHUB_ENV
+          echo "PATH=$PATH:/usr/local/android-sdk/platform-tools" >> $GITHUB_ENV
+          
+          # 安装 Android SDK 命令行工具
+          mkdir -p /usr/local/android-sdk/cmdline-tools
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386.zip -O cmdline-tools.zip
+          unzip cmdline-tools.zip -d /usr/local/android-sdk/cmdline-tools/
+          mv /usr/local/android-sdk/cmdline-tools/cmdline-tools /usr/local/android-sdk/cmdline-tools/latest
+          
+          # 接受许可协议并安装必要的 SDK 组件
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
 
-      # 5. 清理可能存在的损坏依赖
-      - name: Clean environment
+      - name: Install dependencies and sync
         run: |
-          rm -rf node_modules
-          rm -f package-lock.json
-          echo "Cleaned old dependencies."
+          npm install
+          npm install @capacitor/android
+          npx cap sync android
 
-      # 6. 安装依赖（增加超时容忍度）
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps --network-timeout 120000
-
-      # 7. 自动打包 Web 代码到 www 文件夹（如无前端框架可删除此步）
-      - name: Build web assets
-        run: npm run build || true
-
-      # 8. 同步 Capacitor 到 Android 项目
-      - name: Sync Capacitor
-        run: npx cap sync android
-
-      # 9. 编译 Debug APK
       - name: Build Debug APK
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx2048m"
+          ./gradlew assembleDebug
 
-      # 10. 上传 APK 作为构建产物
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: app-debug-apk
+          name: app-debug.apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           
