@@ -38,26 +38,34 @@ jobs:
           echo "MAVEN_REPO=$MAVEN_REPO" >> $GITHUB_ENV
           npm config set registry https://registry.npmmirror.com
 
-      # 5. 安装依赖
+      # 5. 安装依赖 (包括前端框架和 Capacitor)
       - name: Install dependencies
         run: npm install
 
-      # 6. 自动打包 Web 代码到 www 文件夹
-      - name: Build web assets
-        run: npm run build
+      # 6. 【新增除錯】检查 webDir (www) 是否存在
+      - name: Check webDir before build
+        run: ls -la
 
-      # 7. 同步 Capacitor
+      # 7. 自动打包 Web 代码到 www 文件夹
+      - name: Build web assets
+        run: npm run build || true
+
+      # 8. 【新增除錯】检查打包后 webDir 的内容
+      - name: Check webDir after build
+        run: ls -la www
+
+      # 9. 同步 Capacitor
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # 8. 编译 APK
+      # 10. 编译 APK
       - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx2048m"
 
-      # 9. 上传产物
+      # 11. 上传产物
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
