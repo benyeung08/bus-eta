@@ -5,43 +5,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # 【升级1】强制开启 Debug 模式 + 强制锁定 Node.js 版本
+    # 【升级1】强制开启 Debug 模式，方便我们看清哪里出错
     env:
       ACTIONS_STEP_DEBUG: true
-      NODE_OPTIONS: --max-old-space-size=4096
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          persist-credentials: true 
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
           node-version: '24'
 
-      # 【升级2】安装 Java 和 Android SDK（Capacitor 打包 APK 必需）
-      - name: Setup Java and Android SDK
-        run: |
-          # 安装 OpenJDK 17 (Capacitor 推荐版本)
-          sudo apt-get update
-          sudo apt-get install -y openjdk-17-jdk
-          
-          # 设置 Java 环境变量
-          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-          echo "ANDROID_HOME=/usr/local/android-sdk" >> $GITHUB_ENV
-          echo "PATH=$PATH:/usr/local/android-sdk/platform-tools" >> $GITHUB_ENV
-          
-          # 安装 Android SDK 命令行工具
-          mkdir -p /usr/local/android-sdk/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d /usr/local/android-sdk/cmdline-tools/
-          mv /usr/local/android-sdk/cmdline-tools/cmdline-tools /usr/local/android-sdk/cmdline-tools/latest
-          
-          # 接受许可协议并安装必要的 SDK 组件
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+      # 【终极升级】使用官方 Action 一键配置 Java 和 Android SDK
+      # 这步会自动安装 OpenJDK 17 和最新的 Android SDK，并且自动处理环境变量！
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install dependencies and sync
         run: |
