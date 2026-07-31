@@ -20,7 +20,7 @@ jobs:
           # 强制移除旧文件
           rm -rf package-lock.json node_modules
           
-          # 【关键修复】使用 --legacy-peer-deps 解决 Capacitor 版本冲突
+          # 使用 --legacy-peer-deps 解决 Capacitor 版本冲突
           npm install --legacy-peer-deps
           
           # 确保 Android 平台已添加
@@ -33,6 +33,12 @@ jobs:
           sed -i 's/minSdkVersion [0-9]*/minSdkVersion 23/' android/app/build.gradle
           echo "--- 验证修改结果 ---"
           grep minSdkVersion android/app/build.gradle
+
+      # 【新增关键步骤】修复 Gradle 报错：自动创建缺失的 settings.gradle
+      - name: Fix Gradle rootProject error
+        run: |
+          echo "include ':app'" > android/settings.gradle
+          echo "Root Project fixed."
 
       # 3. 打包 Debug APK
       - name: Build Debug APK
