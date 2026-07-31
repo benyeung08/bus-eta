@@ -5,7 +5,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # 【升级】强制开启 Debug 模式
     env:
       ACTIONS_STEP_DEBUG: true
 
@@ -18,11 +17,11 @@ jobs:
         with:
           node-version: '24'
 
-      # 【配置环境】使用官方 Action 一键配置 Java 和 Android SDK
+      # 一键配置 Java + Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 【清理】防止进程卡死
+      # 清理可能卡住的锁
       - name: Fix potential lock issues
         run: |
           sudo rm -f /var/lib/dpkg/lock-frontend
@@ -32,15 +31,18 @@ jobs:
       - name: Install dependencies and sync
         run: |
           npm install
-          
-          # 【新增关键步骤 1】安装 Capacitor 安卓核心库
-          npm install @capacitor/android
-          
-          # 【新增关键步骤 2】真正把安卓平台添加到项目中！(这就是解决红字报错的关键！)
+          npm install @capacitor/android@^12.0.0
           npx cap add android
-          
-          # 【原有步骤】同步代码
           npx cap sync android
+
+      # 【核心】强制设置最低 Android 版本为 23 (Android 6.0)
+      - name: Set minimum Android SDK version
+        run: |
+          # minSdkVersion 23 = Android 6.0 Marshmallow
+          # 你可以改成 21 (Android 5.0) 或 24 等任意版本
+          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 23/' android/app/build.gradle
+          echo "--- 验证修改结果 ---"
+          grep minSdkVersion android/app/build.gradle
 
       - name: Build Debug APK
         run: |
