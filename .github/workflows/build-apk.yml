@@ -14,32 +14,32 @@ jobs:
         with:
           node-version: '24'
 
-      # 1. 安装依赖
+      # 1. 安装依赖（忽略版本冲突）
       - name: Install dependencies
         run: |
           rm -rf package-lock.json node_modules
           npm install --legacy-peer-deps
 
-      # 2. 【关键调整】先添加 Android 平台并同步（这会生成 android 文件夹）
+      # 2. 添加 Android 平台并同步
       - name: Add Android platform and sync
         run: |
           npx cap add android
           npx cap sync android
 
-      # 3. 设置最低 Android 版本
+      # 3. 设置最低 Android 版本 (Android 6.0)
       - name: Set minimum SDK version
         run: |
           sed -i 's/minSdkVersion [0-9]*/minSdkVersion 23/' android/app/build.gradle
           echo "--- 验证修改 ---"
           grep minSdkVersion android/app/build.gradle
 
-      # 4. 【关键调整】现在 android 文件夹存在了，再修复 settings.gradle
+      # 4. 修复 Gradle 配置（防止 settings.gradle 缺失）
       - name: Fix Gradle configuration
         run: |
           echo "include ':app'" > android/settings.gradle
           echo "Settings.gradle created."
 
-      # 5. 打包 APK
+      # 5. 打包 Debug APK
       - name: Build Debug APK
         run: |
           cd android
@@ -51,4 +51,3 @@ jobs:
         with:
           name: app-debug.apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          
