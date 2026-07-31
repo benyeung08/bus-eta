@@ -29,7 +29,7 @@ jobs:
       # 3. 设置最低 Android 版本 (Android 6.0)
       - name: Set minimum SDK version
         run: |
-          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 31/' android/app/build.gradle
+          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 23/' android/app/build.gradle
           echo "--- 验证修改 ---"
           grep minSdkVersion android/app/build.gradle
 
@@ -51,3 +51,4 @@ jobs:
         with:
           name: app-debug.apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          
