@@ -4,5 +4,10 @@
   "webDir": "www",
   "server": {
     "androidScheme": "https"
+  },
+  "android": {
+    "minSdkVersion": 31,
+    "targetSdkVersion": 36,
+    "compileSdkVersion": 37
   }
 }
