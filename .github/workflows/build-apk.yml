@@ -12,9 +12,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 拉取代码
+      # 1. 拉取代码（确保获取完整历史，避免子模块问题）
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2. 设定 Java 17 环境
       - name: Set up JDK 17
@@ -37,14 +39,17 @@ jobs:
         run: |
           echo "MAVEN_REPO=$MAVEN_REPO" >> $GITHUB_ENV
           npm config set registry https://registry.npmmirror.com
+          npm config set ELECTRON_MIRROR https://npmmirror.com/mirrors/electron/
+          npm config set CHROMEDRIVER_CDNURL https://npmmirror.com/mirrors/chromedriver/
 
-      # 5. 强制清理旧依赖，避免缓存冲突
+      # 5. 清理可能存在的损坏依赖
       - name: Clean environment
         run: |
           rm -rf node_modules
           rm -f package-lock.json
+          echo "Cleaned old dependencies."
 
-      # 6. 安装依赖（含前端框架和 Capacitor）
+      # 6. 安装依赖（增加超时容忍度）
       - name: Install dependencies
         run: npm install --legacy-peer-deps --network-timeout 120000
 
