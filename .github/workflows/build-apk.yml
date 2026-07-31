@@ -1,53 +1,57 @@
+yaml
+
 name: Build Android APK
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: [push, workflow_dispatch]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+build:
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+runs-on: ubuntu-latest
+steps:
+  # 1. 拉取代碼
+  - name: Checkout repository
+    uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'  # 根据你的 Capacitor 版本调整，推荐 18 LTS
+  # 2. 設定 Java 17 環境 (Capacitor 5/6 推薦)
+  - name: Set up JDK 17
+    uses: actions/setup-java@v4
+    with:
+      distribution: 'temurin'
+      java-version: '17'
 
-      - name: Cache npm dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+  # 3. 設定 Node.js 18 (穩定的 LTS 版本)
+  - name: Set up Node.js
+    uses: actions/setup-node@v4
+    with:
+      node-version: '18'
+      cache: 'npm' # 自動快取 npm 依賴，加速下次構建
 
-      - name: Install dependencies and sync Capacitor
-        run: |
-          npm config set registry https://registry.npmmirror.com  # 使用淘宝镜像加速
-          npm install
-          npm install @capacitor/android
-          npx cap sync android
-          chmod +x android/gradlew  # 关键：授予 gradlew 执行权限
+  # 4. 【新增】設定國內鏡像，防止 Gradle 下載依賴超時
+  - name: Configure mirrors
+    run: |
+      echo "MAVEN_REPO=https://maven.aliyun.com/repository/google" >> $GITHUB_ENV
 
-      - name: Build Debug APK
-        run: |
-          cd android
-          ./gradlew assembleDebug
+  # 5. 安裝依賴與同步 Capacitor
+  - name: Install dependencies and sync
+    run: |
+      # 切換國內 npm 源加速
+      npm config set registry https://registry.npmmirror.com
+      npm install
+      npm install @capacitor/android
+      npx cap sync android
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug.apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+  # 6. 編譯 APK (包含強制賦予 gradlew 權限 和 增加記憶體上限)
+  - name: Build Debug APK
+    run: |
+      cd android
+      chmod +x gradlew  # 強制確保有執行權限
+      ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx2048m"
+
+  # 7. 上傳產物
+  - name: Upload APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: app-debug-apk
+      path: android/app/build/outputs/apk/debug/app-debug.apk
