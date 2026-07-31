@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "scripts": {
     "build": "echo 'no build needed'"
+    "fix-android-config": "echo \"include ':app'\" > android/settings.gradle"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.0.0",
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/android": "^6.0.0"
+    "@capacitor/cli": "^5.7.0",
+    "@capacitor/core": "^6.7.0",
+    "@capacitor/android": "^5.7.0"
   }
 }
