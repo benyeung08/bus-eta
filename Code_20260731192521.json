@@ -1,0 +1,8 @@
+{
+  "appId": "com.yourname.hkbuseta",
+  "appName": "香港巴士ETA",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
