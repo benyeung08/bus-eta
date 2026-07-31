@@ -30,7 +30,7 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      # 4. 设定国内镜像源
+      # 4. 设定国内镜像源（加速依赖下载）
       - name: Configure mirrors
         env:
           MAVEN_REPO: https://maven.aliyun.com/repository/google
@@ -38,36 +38,35 @@ jobs:
           echo "MAVEN_REPO=$MAVEN_REPO" >> $GITHUB_ENV
           npm config set registry https://registry.npmmirror.com
 
-      # 5. 安装依赖 (包括前端框架和 Capacitor)
+      # 5. 强制清理旧依赖，避免缓存冲突
+      - name: Clean environment
+        run: |
+          rm -rf node_modules
+          rm -f package-lock.json
+
+      # 6. 安装依赖（含前端框架和 Capacitor）
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps --network-timeout 120000
 
-      # 6. 【新增除錯】检查 webDir (www) 是否存在
-      - name: Check webDir before build
-        run: ls -la
-
-      # 7. 自动打包 Web 代码到 www 文件夹
+      # 7. 自动打包 Web 代码到 www 文件夹（如无前端框架可删除此步）
       - name: Build web assets
         run: npm run build || true
 
-      # 8. 【新增除錯】检查打包后 webDir 的内容
-      - name: Check webDir after build
-        run: ls -la www
-
-      # 9. 同步 Capacitor
+      # 8. 同步 Capacitor 到 Android 项目
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # 10. 编译 APK
+      # 9. 编译 Debug APK
       - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx2048m"
 
-      # 11. 上传产物
+      # 10. 上传 APK 作为构建产物
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          
