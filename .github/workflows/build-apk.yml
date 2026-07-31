@@ -5,9 +5,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      ACTIONS_STEP_DEBUG: true
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -17,38 +14,35 @@ jobs:
         with:
           node-version: '24'
 
-      # 一键配置 Java + Android SDK
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      # 清理可能卡住的锁
-      - name: Fix potential lock issues
-        run: |
-          sudo rm -f /var/lib/dpkg/lock-frontend
-          sudo rm -f /var/lib/dpkg/lock
-          sudo dpkg --configure -a
-
+      # 1. 强制清理并锁定依赖版本
       - name: Install dependencies and sync
         run: |
+          # 先强制移除可能存在的错误锁定文件
+          rm -rf package-lock.json node_modules
+          
+          # 直接安装核心依赖，并显式指定正确的 Capacitor 版本
           npm install
-          npm install @capacitor/android@^12.0.0
+          npm install @capacitor/android@^5.0.0
+          
+          # 同步 Capacitor
           npx cap add android
           npx cap sync android
 
-      # 【核心】强制设置最低 Android 版本为 23 (Android 6.0)
+      # 2. 设置最低 Android 版本
       - name: Set minimum Android SDK version
         run: |
-          # minSdkVersion 23 = Android 6.0 Marshmallow
-          # 你可以改成 21 (Android 5.0) 或 24 等任意版本
+          # 强制修改 gradle 文件，将最低版本设为 23 (Android 6.0)
           sed -i 's/minSdkVersion [0-9]*/minSdkVersion 23/' android/app/build.gradle
           echo "--- 验证修改结果 ---"
           grep minSdkVersion android/app/build.gradle
 
+      # 3. 打包 APK
       - name: Build Debug APK
         run: |
           cd android
           ./gradlew assembleDebug
 
+      # 4. 上传成品
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
