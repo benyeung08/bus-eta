@@ -22,13 +22,10 @@ jobs:
           npm install @capacitor/android
           npx cap sync android
 
-      # 【终极修改】使用别人搭好的安卓打包环境
       - name: Build Debug APK
-        uses: android-actions/android-gradle-actions@v3
-        with:
-          script: |
-            cd android
-            ./gradlew assembleDebug
+        run: |
+          cd android
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
