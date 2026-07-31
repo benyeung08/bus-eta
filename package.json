@@ -5,8 +5,8 @@
     "build": "echo 'no build needed'"
   },
   "devDependencies": {
-    "@capacitor/cli": "^12.0.0",
-    "@capacitor/core": "^12.0.0",
-    "@capacitor/android": "^12.0.0"
+    "@capacitor/cli": "^24.0.0",
+    "@capacitor/core": "^24.0.0",
+    "@capacitor/android": "^24.0.0"
   }
 }
