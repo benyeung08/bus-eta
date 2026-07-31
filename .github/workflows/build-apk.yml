@@ -5,7 +5,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # 【升级1】强制开启 Debug 模式，方便我们看清哪里出错
+    # 【升级1】强制开启 Debug 模式
     env:
       ACTIONS_STEP_DEBUG: true
 
@@ -18,10 +18,17 @@ jobs:
         with:
           node-version: '24'
 
-      # 【终极升级】使用官方 Action 一键配置 Java 和 Android SDK
-      # 这步会自动安装 OpenJDK 17 和最新的 Android SDK，并且自动处理环境变量！
+      # 【终极升级】使用官方 Action 配置环境
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      # 【新增】关键步骤：清理可能卡住的进程并等待锁释放
+      - name: Fix potential lock issues
+        run: |
+          sudo rm -f /var/lib/dpkg/lock-frontend
+          sudo rm -f /var/lib/dpkg/lock
+          sudo dpkg --configure -a
+          sudo apt-get update
 
       - name: Install dependencies and sync
         run: |
