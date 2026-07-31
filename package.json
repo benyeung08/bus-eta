@@ -2,8 +2,7 @@
   "name": "benyeung08busApp",
   "version": "1.0.0",
   "scripts": {
-    "build": "echo 'no build needed'"
-    "fix-android-config": "echo \"include ':app'\" > android/settings.gradle"
+    "build": "echo 'no build needed"
   },
   "devDependencies": {
     "@capacitor/cli": "^5.7.0",
