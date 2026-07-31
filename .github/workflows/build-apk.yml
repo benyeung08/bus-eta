@@ -5,7 +5,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # 【升级1】强制开启 Debug 模式
+    # 【升级】强制开启 Debug 模式
     env:
       ACTIONS_STEP_DEBUG: true
 
@@ -18,22 +18,28 @@ jobs:
         with:
           node-version: '24'
 
-      # 【终极升级】使用官方 Action 配置环境
+      # 【配置环境】使用官方 Action 一键配置 Java 和 Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 【新增】关键步骤：清理可能卡住的进程并等待锁释放
+      # 【清理】防止进程卡死
       - name: Fix potential lock issues
         run: |
           sudo rm -f /var/lib/dpkg/lock-frontend
           sudo rm -f /var/lib/dpkg/lock
           sudo dpkg --configure -a
-          sudo apt-get update
 
       - name: Install dependencies and sync
         run: |
           npm install
+          
+          # 【新增关键步骤 1】安装 Capacitor 安卓核心库
           npm install @capacitor/android
+          
+          # 【新增关键步骤 2】真正把安卓平台添加到项目中！(这就是解决红字报错的关键！)
+          npx cap add android
+          
+          # 【原有步骤】同步代码
           npx cap sync android
 
       - name: Build Debug APK
