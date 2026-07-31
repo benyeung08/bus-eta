@@ -9,7 +9,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # 【关键修改1】允许机器人后续将修改推回仓库
           persist-credentials: true 
 
       - name: Set up Node.js
@@ -20,17 +19,16 @@ jobs:
       - name: Install dependencies and sync
         run: |
           npm install
-          
-          # 【关键修改2】在同步前，先手动安装缺失的安卓依赖
           npm install @capacitor/android
-          
-          # 再次同步
           npx cap sync android
 
+      # 【终极修改】使用别人搭好的安卓打包环境
       - name: Build Debug APK
-        run: |
-          cd android
-          ./gradlew assembleDebug
+        uses: android-actions/android-gradle-actions@v3
+        with:
+          script: |
+            cd android
+            ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
