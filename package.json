@@ -1,12 +1,8 @@
 {
-  "name": "my-html-app",
-  "version": "1.0.0",
-  "scripts": {
-    "build": "echo 'static html, no build step'"
-  },
-  "devDependencies": {
-    "@capacitor/cli": "^6.0.0",
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/android": "^6.0.0"
+  "appId": "com.nyeung08.buseta",
+  "appName": "香港巴士ETA",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
   }
 }
