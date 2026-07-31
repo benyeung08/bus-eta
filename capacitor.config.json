@@ -3,6 +3,6 @@
   "appName": "香港巴士ETA",
   "webDir": "www",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https://benyeung08.github.io/bus-eta/"
   }
 }
