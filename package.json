@@ -1,12 +1,12 @@
 {
-  "name": "bus-eta",
+  "name": "benyeung08busApp",
   "version": "1.0.0",
   "scripts": {
     "build": "echo 'no build needed'"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.0.0",
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/android": "^6.0.0"
+    "@capacitor/cli": "^10.0.0",
+    "@capacitor/core": "^10.0.0",
+    "@capacitor/android": "^10.0.0"
   }
 }
