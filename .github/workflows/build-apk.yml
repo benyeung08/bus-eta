@@ -11,41 +11,63 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - name: Setup Java 18
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Capacitor CLI and dependencies
+      # 1. 安裝依賴
+      - name: Install dependencies
         run: |
-          npm install -g @capacitor/cli
-          npm install
+          rm -rf package-lock.json node_modules
+          npm install --legacy-peer-deps
 
+      # 2. 生成 Android 平台
       - name: Add Android platform
         run: |
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
+          npx cap add android --force 2>/dev/null || true
+          npx cap sync android
 
-      - name: Sync web assets
-        run: npx cap sync android
+      # 3. 強制寫入完整且正確的 settings.gradle
+      # 這是解決 'rootProject' 錯誤的關鍵
+      - name: Fix settings.gradle
+        run: |
+          cat > android/settings.gradle << 'EOF'
+          rootProject.name = "app"
+          include ':app'
+          include ':capacitor-android'
+          project(':capacitor-android').projectDir = new File(rootProject.projectDir, '../node_modules/@capacitor/android/capacitor')
+          EOF
+          echo "--- settings.gradle 內容 ---"
+          cat android/settings.gradle
 
-      - name: Grant execute permission for gradlew
+      # 4. 設置最低 SDK 版本
+      - name: Set minimum SDK version
+        run: |
+          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 23/' android/app/build.gradle
+          grep minSdkVersion android/app/build.gradle
+
+      # 5. 賦予 gradlew 執行權限
+      - name: Make gradlew executable
         run: chmod +x android/gradlew
 
+      # 6. 打包 APK
       - name: Build Debug APK
-        run: cd android && ./gradlew assembleDebug
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon
 
+      # 7. 上傳 APK
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: app-debug.apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
