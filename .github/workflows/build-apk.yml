@@ -12,44 +12,58 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '24'
+          node-version: '20'
 
-      # 1. 安装依赖（忽略版本冲突）
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 1. 安装依赖
       - name: Install dependencies
         run: |
           rm -rf package-lock.json node_modules
           npm install --legacy-peer-deps
 
-      # 2. 添加 Android 平台并同步（先清理旧文件夹，避免冲突）
-      - name: Add Android platform and sync
+      # 2. 清理旧 android 目录并重新添加
+      - name: Add Android platform
         run: |
           rm -rf android
           npx cap add android
-          npx cap sync android
 
-      # 3. 设置最低 Android 版本 (Android 6.0)
-      - name: Set minimum SDK version
+      # 3. 同步网页资源
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      # 4. 【终极修复】用 sed 把 build.gradle 里的
+      #    rootProject.ext.xxx 全部替换成硬编码数值
+      #    这样 Gradle 不再依赖 rootProject，彻底消灭 null object 错误
+      - name: Patch build.gradle to remove rootProject dependency
         run: |
-          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 23/' android/app/build.gradle
-          echo "--- 验证修改 ---"
-          grep minSdkVersion android/app/build.gradle
+          echo "正在修补 android/app/build.gradle..."
+          # 替换 compileSdkVersion
+          sed -i 's/compileSdkVersion rootProject\.ext\.compileSdkVersion/compileSdkVersion 34/' android/app/build.gradle
+          # 替换 minSdkVersion
+          sed -i 's/minSdkVersion rootProject\.ext\.minSdkVersion/minSdkVersion 23/' android/app/build.gradle
+          # 替换 targetSdkVersion
+          sed -i 's/targetSdkVersion rootProject\.ext\.targetSdkVersion/targetSdkVersion 34/' android/app/build.gradle
+          # 替换 kotlin_version
+          sed -i "s/rootProject\.ext\.kotlin_version/'1.8.20'/" android/app/build.gradle
+          echo "--- 验证修改结果 ---"
+          grep -E "compileSdk|minSdk|targetSdk|kotlin" android/app/build.gradle
 
-      # 4. 强制修复 settings.gradle（防止 Gradle 初始化报错）
-      - name: Force fix settings.gradle
-        run: |
-          echo "include ':app'" > android/settings.gradle
-          echo "include ':capacitor-android'" >> android/settings.gradle
-          echo "project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')" >> android/settings.gradle
-          echo "--- 验证文件内容 ---"
-          cat android/settings.gradle
+      # 5. 给 gradlew 加执行权限
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
 
-      # 5. 打包 Debug APK
+      # 6. 打包 Debug APK
       - name: Build Debug APK
         run: |
           cd android
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
 
-      # 6. 上传 APK
+      # 7. 上传 APK
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
