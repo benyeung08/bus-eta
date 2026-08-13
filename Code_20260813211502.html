@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; img-src https: data:; connect-src https:;">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="香港公共交通實時到站查詢系統">
+<title>HK Transit Live</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={darkMode:'class'}</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
+<style>
+*{scrollbar-width:thin}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:#f1f1f1}
+html.dark ::-webkit-scrollbar-track{background:#1e293b}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+html.dark ::-webkit-scrollbar-thumb{background:#475569}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.blink-warning{animation:blink .5s ease-in-out infinite}
+.spinner{display:inline-block;width:18px;height:18px;border:3px solid rgba(59,130,246,.3);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite}
+.row-enter{animation:slideUp .3s ease-out}
+@keyframes slideUp{0%{opacity:0;transform:translateY(10px)}100%{opacity:1;transform:translateY(0)}}
+.departing{background:linear-gradient(135deg,#dc2626,#b91c1c)!important;color:#fff!important}
+.arriving{background:linear-gradient(135deg,#d97706,#b45309)!important;color:#fff!important}
+.terminal-soon{background:linear-gradient(135deg,#9333ea,#7c3aed)!important;color:#fff!important}
+.badge-org{font-size:9px;padding:1px 5px;border-radius:4px;background:#8b5cf6;color:#fff;margin-left:4px;vertical-align:middle;font-weight:bold}
+.badge-mid{font-size:9px;padding:1px 5px;border-radius:4px;background:#d97706;color:#fff;margin-left:4px;vertical-align:middle;font-weight:bold}
+.badge-term{font-size:9px;padding:1px 5px;border-radius:4px;background:#9333ea;color:#fff;margin-left:4px;vertical-align:middle;font-weight:bold}
+.error-box{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:16px;border-radius:12px;text-align:center;margin:12px}
+.dark .error-box{background:rgba(220,38,38,.08);border-color:rgba(220,38,38,.25)}
+.info-box{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:16px;border-radius:12px;text-align:center;margin:12px}
+.dark .info-box{background:rgba(37,99,235,.08);border-color:rgba(37,99,235,.25);color:#60a5fa}
+.btn-retry{margin-top:10px;padding:8px 20px;background:#3b82f6;color:#fff;border-radius:8px;font-size:13px;cursor:pointer;border:none;font-weight:bold}
+.btn-retry:hover{background:#2563eb}
+.dest-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;background:rgba(255,255,255,.18);border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:bold;margin-right:4px}
+.tag.kmb{background:#dc2626;color:#fff}.tag.ctb{background:#f59e0b;color:#000}.tag.lwb{background:#ea580c;color:#fff}
+.tag.gmb{background:#16a34a;color:#fff}.tag.mtr{background:#059669;color:#fff}.tag.lrt{background:#0284c7;color:#fff}.tag.bus{background:#0d9488;color:#fff}
+.toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 20px;border-radius:10px;font-weight:bold;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.15);transition:opacity .3s;pointer-events:none}
+.toast-ok{background:#10b981;color:#fff}.toast-err{background:#ef4444;color:#fff}.toast-info{background:#3b82f6;color:#fff}
+.eta-1{background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;padding:2px 8px;border-radius:6px;font-weight:bold;box-shadow:0 0 6px rgba(220,38,38,.5)}
+.eta-2{background:#dbeafe;color:#1d4ed8;padding:2px 6px;border-radius:4px;border:1px solid #93c5fd}
+.eta-3{background:#f1f5f9;color:#475565;padding:2px 6px;border-radius:4px;border:1px solid #cbd5e1}
+.eta-4{color:#94a3b8;font-size:11px;padding:1px 4px}
+.bar{display:inline-block;width:40px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;vertical-align:middle;margin-left:4px}
+.bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#dc2626,#fbbf24);transition:width .5s}
+.gheader{font-size:12px;font-weight:bold;padding:6px 12px;border-radius:8px;margin-bottom:4px;color:#fff}
+.gheader.kmb{background:#dc2626}.gheader.lwb{background:#ea580c}.gheader.ctb{background:#f59e0b;color:#000}
+.gheader.nwfb{background:#9333ea}.gheader.gmb{background:#16a34a}.gheader.mtr{background:#059669}
+.gheader.lrt{background:#0284c7}.gheader.bus{background:#0d9488}
+#proxy-hint{display:none;background:#fff3cd;color:#856404;padding:10px 15px;border-radius:8px;margin:10px 0;font-size:13px;border:1px solid #ffeeba}
+#proxy-hint code{background:#f5e9b8;padding:1px 4px;border-radius:3px;font-family:monospace}
+/* 性能優化 */
+.cv-auto{content-visibility:auto;contain-intrinsic-size:0 60px}
+.gpu{transform:translateZ(0);will-change:transform,opacity}
+:focus-visible{outline:2px solid #3b82f6;outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+@media (prefers-contrast:high){.eta-1{background:#900;color:#fff;border:2px solid #000}.eta-2{background:#003;color:#fff;border:2px solid #000}}
+</style>
+</head>
+<body class="bg-slate-50 font-sans min-h-screen flex flex-col text-slate-800 dark:bg-slate-900 dark:text-slate-200">
+<noscript><div style="padding:20px;text-align:center;background:#fef2f2;color:#dc2626;font-size:16px"><strong>⚠️ 本頁面需要 JavaScript 才能正常運作</strong></div></noscript>
+<main class="flex-grow max-w-6xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+<section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 h-fit dark:bg-slate-800 dark:border-slate-700">
+  <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3 dark:border-slate-700">
+    <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2 dark:text-slate-200"><i class="fa-solid fa-sliders text-blue-500" aria-hidden="true"></i><span data-lang="filter">路線篩選</span></h2>
+    <div class="flex items-center gap-2">
+      <button type="button" id="theme-toggle" aria-label="切換主題" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i id="theme-icon" class="fa-solid fa-moon text-sm" aria-hidden="true"></i></button>
+      <select id="lang-select" aria-label="語言" class="text-xs font-mono bg-slate-100 border border-slate-200 rounded-md px-2 py-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white"><option value="zh-Hant">繁中</option><option value="zh-Hans">簡中</option><option value="en">EN</option></select>
+      <span class="text-xs font-mono bg-slate-900 text-white px-2.5 py-1 rounded-md dark:bg-slate-950" id="live-clock" aria-label="當前時間">--:--:--</span>
+    </div>
+  </div>
+  <div id="proxy-hint"></div>
+  <div class="space-y-4">
+    <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 dark:text-slate-400" data-lang="operator">營運商</label>
+      <select id="company-select" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+        <option value="KMB_LWB">九巴/龍運 KMB & LWB</option>
+        <option value="CTB">城巴 CTB</option>
+        <option value="GMB">綠色小巴 GMB</option>
+        <option value="MTR">港鐵 MTR</option>
+        <option value="LRT">輕鐵 LRT</option>
+        <option value="MTR_BUS">港鐵巴士 MTR Bus</option>
+      </select>
+    </div>
+    <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 dark:text-slate-400" data-lang="enter_route">輸入路線</label>
+      <div class="relative">
+        <input type="text" id="route-input" value="1A" placeholder="e.g. 1A / E33 / 720 / TWL" class="w-full p-2.5 pl-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-bold tracking-wide dark:bg-slate-700 dark:border-slate-600 dark:text-white" autocomplete="off" spellcheck="false">
+        <button type="button" id="search-btn" class="absolute right-2 top-2 w-8 h-8 rounded-lg bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition shadow-sm" aria-label="搜尋"><i class="fa-solid fa-magnifying-glass text-sm" aria-hidden="true"></i></button>
+      </div>
+      <p class="text-[10px] text-slate-400 mt-1" id="route-hint">九巴/龍運：輸入路線編號（如 1A、E33、NA29）</p>
+    </div>
+    <div id="direction-container">
+      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 dark:text-slate-400" data-lang="direction">行車方向</label>
+      <div class="grid grid-cols-1 gap-2" role="group" aria-label="方向">
+        <button type="button" id="dir-outbound" data-dir="outbound" class="dir-btn py-2.5 px-3 bg-blue-600 text-white text-sm rounded-xl font-medium shadow-sm transition text-left flex justify-between items-center" aria-pressed="true"><span><span data-lang="outbound">去程</span></span><i class="fa-solid fa-circle-chevron-right text-xs opacity-70" aria-hidden="true"></i></button>
+        <button type="button" id="dir-inbound" data-dir="inbound" class="dir-btn py-2.5 px-3 bg-slate-100 text-slate-600 text-sm rounded-xl font-medium hover:bg-slate-200 transition text-left flex justify-between items-center dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600" aria-pressed="false"><span><span data-lang="inbound">回程</span></span><i class="fa-solid fa-circle-chevron-right text-xs opacity-30" aria-hidden="true"></i></button>
+      </div>
+    </div>
+    <div id="weather-panel" class="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs dark:bg-sky-900/20 dark:border-sky-800" aria-live="polite">
+      <div class="flex items-center gap-2 mb-2"><i class="fa-solid fa-cloud-sun text-sky-500" aria-hidden="true"></i><span class="font-bold" data-lang="weather_title">當前天氣</span><span id="weather-update-time" class="ml-auto text-[10px] text-slate-400"></span></div>
+      <div id="weather-content"><div class="flex items-center gap-2 text-slate-400"><span class="spinner" aria-hidden="true"></span> <span data-lang="loading">載入中...</span></div></div>
+    </div>
+    <div id="service-summary" class="grid grid-cols-2 gap-2 text-xs" aria-label="服務摘要">
+      <div class="bg-red-50 border border-red-200 rounded-xl p-2 text-center dark:bg-red-900/20 dark:border-red-800"><span class="block text-lg font-black text-red-600 dark:text-red-400" id="sum-cancel">0</span><span data-lang="cancel_sum">取消</span></div>
+      <div class="bg-green-50 border border-green-200 rounded-xl p-2 text-center dark:bg-green-900/20 dark:border-green-800"><span class="block text-lg font-black text-green-600 dark:text-green-400" id="sum-new">0</span><span data-lang="new_sum">新增</span></div>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-2 text-center dark:bg-amber-900/20 dark:border-amber-800"><span class="block text-lg font-black text-amber-600 dark:text-amber-400" id="sum-divert">0</span><span data-lang="divert_sum">改道</span></div>
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-2 text-center dark:bg-blue-900/20 dark:border-blue-800"><span class="block text-lg font-black text-blue-600 dark:text-blue-400" id="sum-modify">0</span><span data-lang="modify_sum">修改</span></div>
+      <div class="col-span-2 bg-pink-50 border border-pink-200 rounded-xl p-2 text-center dark:bg-pink-900/20 dark:border-pink-800"><span class="block text-lg font-bold text-pink-600 dark:text-pink-400" id="sum-weather">0</span><span data-lang="weather_sum">天氣影響</span></div>
+    </div>
+  </div>
+</section>
+<section class="md:col-span-2 flex flex-col gap-4">
+  <div id="route-banner" class="bg-gradient-to-r from-red-600 via-orange-500 to-orange-600 text-white p-5 rounded-2xl shadow-sm flex justify-between items-center" role="banner">
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-3 flex-wrap"><span class="text-3xl font-black bg-white text-red-600 px-3 py-0.5 rounded-xl shadow-sm shrink-0" id="info-route">1A</span><h3 class="text-lg font-bold tracking-wide truncate" id="info-direction">載入中...</h3></div>
+      <div class="mt-2 flex items-center gap-2 flex-wrap" id="dest-row"><span class="dest-pill" id="dest-pill" style="display:none"><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span id="dest-text">--</span></span></div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0"><span class="bg-white/20 text-xs font-bold px-3 py-1.5 rounded-full backdrop-blur-sm" id="company-badge">九巴/龍運</span></div>
+  </div>
+  <div class="flex bg-slate-200 p-1 rounded-xl dark:bg-slate-700" role="tablist">
+    <button type="button" id="tab-btn-eta" class="flex-1 py-2.5 text-sm font-bold rounded-lg bg-white text-blue-600 shadow-sm flex justify-center items-center gap-2 dark:bg-slate-800 dark:text-blue-400" role="tab" aria-selected="true"><i class="fa-solid fa-stopwatch" aria-hidden="true"></i><span data-lang="eta_tab">實時到站時間</span></button>
+    <button type="button" id="tab-btn-timetable" class="flex-1 py-2.5 text-sm font-medium rounded-lg text-slate-600 hover:text-slate-900 flex justify-center items-center gap-2 dark:text-slate-400 dark:hover:text-white" role="tab" aria-selected="false"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i><span data-lang="tt_tab">班次時間表</span></button>
+    <button type="button" id="tab-btn-service" class="flex-1 py-2.5 text-sm font-medium rounded-lg text-slate-600 hover:text-slate-900 flex justify-center items-center gap-2 dark:text-slate-400 dark:hover:text-white" role="tab" aria-selected="false"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i><span data-lang="svc_tab">服務公告</span></button>
+  </div>
+  <div id="panel-eta" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-grow flex flex-col dark:bg-slate-800 dark:border-slate-700" role="tabpanel" aria-busy="true">
+    <div class="bg-slate-50 px-4 py-3 border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider grid grid-cols-12 dark:bg-slate-700/50 dark:border-slate-700"><div class="col-span-1 text-center" data-lang="col_seq">#</div><div class="col-span-6" data-lang="col_stop">車站名稱</div><div class="col-span-5 text-right" data-lang="col_time">預計到站時間</div></div>
+    <div id="stops-container" class="divide-y divide-slate-100 max-h-[55vh] overflow-y-auto flex-grow dark:divide-slate-700" aria-live="polite"></div>
+  </div>
+  <div id="panel-timetable" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-grow hidden p-5 dark:bg-slate-800 dark:border-slate-700" role="tabpanel"><div id="timetable-container" class="space-y-6 max-h-[55vh] overflow-y-auto pr-1"></div></div>
+  <div id="panel-service" class="hidden p-5 dark:bg-slate-800 dark:border-slate-700" role="tabpanel"><div id="service-container" class="max-h-[55vh] overflow-y-auto pr-1 space-y-4"></div></div>
+</section>
+</main>
+<div id="stop-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden p-4" role="dialog" aria-modal="true" aria-labelledby="modal-stop-name">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-xl w-full max-h-[85vh] flex flex-col border border-slate-100 dark:border-slate-700 overflow-hidden">
+    <div class="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-700/50"><div><span class="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block" data-lang="same_stop_title">同站全部路線 ETA</span><h3 id="modal-stop-name" class="text-lg font-black text-slate-800 dark:text-slate-100 mt-0.5">--</h3></div><button type="button" id="modal-close-btn" class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-500 flex items-center justify-center" aria-label="關閉"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+    <div id="modal-content" class="p-4 overflow-y-auto space-y-3 flex-grow"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   HK Transit Live — 全量性能優化 + Bug修復版
+   ============================================================ */
+
+// ---------- 主題初始化 ----------
+(function(){try{const s=localStorage.getItem('hk-transit-theme');if(s==='dark')document.documentElement.classList.add('dark');else if(s==='light')document.documentElement.classList.remove('dark');else if(window.matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('dark');}catch(e){}})();
+
+// ---------- 性能優化配置 ----------
+const API_PROXY_PREFIX = '';
+const FETCH_TIMEOUT = 30000;
+const MAX_CONCURRENT = 4;
+const RETRY_ATTEMPTS = 3;
+const RETRY_DELAY = 800;
+
+// 分層緩存 TTL
+const CACHE_TTL = {
+  STOP_NAME: 24 * 60 * 60 * 1000,
+  ROUTE_INFO: 60 * 60 * 1000,
+  ETA: 30 * 1000,
+  WEATHER: 5 * 60 * 1000,
+  ALERTS: 10 * 60 * 1000,
+  TIMETABLE: 60 * 60 * 1000
+};
+
+let REFRESH_INTERVAL = 15000;
+let activeRequests = 0;
+const requestQueue = [];
+let onlineStatus = true;
+let lastConnToast = 0;
+
+// ---------- 翻譯 ----------
+const T = {
+  "zh-Hant": {filter:"路線篩選",operator:"營運商",direction:"行車方向",enter_route:"輸入路線",outbound:"去程",inbound:"回程",eta_tab:"實時到站時間",tt_tab:"班次時間表",svc_tab:"服務公告",col_seq:"#",col_stop:"車站名稱",col_time:"預計到站時間",loading:"載入中...",no_data:"暫無數據",search_error:"找不到該路線資料",stop_error:"車站資料載入失敗",retry:"重試",arriving_soon:"即將到站",origin:"起點站",mid:"中途站",terminal:"終點站",min:"分鐘",api_error:"⚠️ 無法連線至政府開放數據平台",same_stop_title:"同站全部路線 ETA",loading_stop_eta:"正在載入同站全部路線數據...",no_other_routes:"此站點暫無其他路線數據",cancel_sum:"取消",new_sum:"新增",divert_sum:"改道",modify_sum:"修改",weather_sum:"天氣影響",weather_title:"當前天氣",no_announcements:"目前無服務公告",expand:"展開",collapse:"收合",conn_lost:"⚠️ 連線中斷，顯示上次快取",conn_back:"✅ 已重新連線",timeout_err:"請求超時（30秒），跨境網絡較慢",network_err:"網絡連接失敗：跨境訪問可能受限"},
+  "zh-Hans": {filter:"路线筛选",operator:"运营商",direction:"行车方向",enter_route:"输入路线",outbound:"去程",inbound:"回程",eta_tab:"实时到站时间",tt_tab:"班次时间表",svc_tab:"服务公告",col_seq:"#",col_stop:"车站名称",col_time:"预计到站时间",loading:"载入中...",no_data:"暂無数据",search_error:"找不到该路线资料",stop_error:"车站资料载入失败",retry:"重试",arriving_soon:"即将到站",origin:"起点站",mid:"中途站",terminal:"终点站",min:"分钟",api_error:"⚠️ 无法连线至政府开放数据平台",same_stop_title:"同站全部路线 ETA",loading_stop_eta:"正在载入同站全部路线数据...",no_other_routes:"此站点暂无其他路线数据",cancel_sum:"取消",new_sum:"新增",divert_sum:"改道",modify_sum:"修改",weather_sum:"天气影响",weather_title:"当前天气",no_announcements:"目前无服务公告",expand:"展开",collapse:"收合",conn_lost:"⚠️ 连线中断，显示上次快取",conn_back:"✅ 已重新连线",timeout_err:"请求超时（30秒），跨境网络较慢",network_err:"网络连接失败：跨境访问可能受限"},
+  "en": {filter:"Route Filter",operator:"Operator",direction:"Direction",enter_route:"Enter Route",outbound:"Outbound",inbound:"Inbound",eta_tab:"Real-time ETA",tt_tab:"Timetable",svc_tab:"Service Alerts",col_seq:"#",col_stop:"Stop Name",col_time:"ETA",loading:"Loading...",no_data:"No Data",search_error:"Route not found",stop_error:"Failed to load stop data",retry:"Retry",arriving_soon:"Arriving Soon",origin:"Origin",mid:"Mid",terminal:"Terminal",min:"min",api_error:"⚠️ Cannot reach Open Data API",same_stop_title:"All Routes at Stop",loading_stop_eta:"Loading all routes at stop...",no_other_routes:"No other routes at this stop",cancel_sum:"Cancelled",new_sum:"New",divert_sum:"Diverted",modify_sum:"Modified",weather_sum:"Weather",weather_title:"Current Weather",no_announcements:"No announcements",expand:"Expand",collapse:"Collapse",conn_lost:"⚠️ Connection lost, showing cached data",conn_back:"✅ Reconnected",timeout_err:"Request timed out (30s). Cross-border network slow",network_err:"Network connection failed: cross-border access may be restricted"}
+};
+let currentLang = 'zh-Hant';
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
+const getT = k => (T[currentLang]||T['zh-Hant'])[k] || k;
+const calcMin = ts => { if(!ts) return -1; const d=new Date(ts); if(isNaN(d.getTime())) return -1; return Math.max(0, Math.round((d.getTime()-Date.now())/60000)); };
+const nameKey = () => currentLang==='zh-Hans'?'name_sc':currentLang==='en'?'name_en':'name_tc';
+const isLwbRoute = rn => /^[ELNA]/i.test(rn);
+const validateRouteInput = v => typeof v==='string' && /^[A-Za-z0-9_-]{1,15}$/.test(v.trim());
+const validateStopId = v => { if(typeof v!=='string'&&typeof v!=='number') return false; return /^[A-Za-z0-9_-]{1,30}$/.test(String(v).trim()); };
+
+// ---------- 高性能 LRU 緩存（含過期時間） ----------
+class LRUCache {
+  constructor(max=500){this.max=max;this.cache=new Map();}
+  get(key){if(!this.cache.has(key))return null;const item=this.cache.get(key);if(Date.now()>item.expiry){this.cache.delete(key);return null;}this.cache.delete(key);this.cache.set(key,item);return item.value;}
+  set(key,value,ttl=CACHE_TTL.ETA){if(this.cache.has(key))this.cache.delete(key);else if(this.cache.size>=this.max)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,{value,expiry:Date.now()+ttl});}
+  clear(){this.cache.clear();}
+}
+const cache = new LRUCache();
+
+// ---------- 智能請求管理器（合併 + 並發控制 + 自適應間隔） ----------
+const pendingRequests = new Map();
+
+const fetchWithTimeout = async (url, timeout=FETCH_TIMEOUT) => {
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), timeout);
+  const startTime = Date.now();
+  try {
+    activeRequests++;
+    const res = await fetch(url, {signal:controller.signal, headers:{'Accept':'application/json','Cache-Control':'no-cache'}});
+    clearTimeout(timer);
+    const rt = Date.now()-startTime;
+    if(rt>5000) REFRESH_INTERVAL=30000; else if(rt>2000) REFRESH_INTERVAL=20000; else REFRESH_INTERVAL=15000;
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  } finally { activeRequests--; clearTimeout(timer); }
+};
+
+const fetchJSON = async (url, ttl=CACHE_TTL.ETA) => {
+  const cacheKey = `${url}_${ttl}`;
+  const cached = cache.get(cacheKey);
+  if(cached) return cached;
+  if(pendingRequests.has(cacheKey)) return pendingRequests.get(cacheKey);
+
+  if(activeRequests >= MAX_CONCURRENT) {
+    return new Promise((resolve, reject) => { requestQueue.push({url, ttl, resolve, reject}); });
+  }
+
+  const promise = (async () => {
+    let lastErr;
+    for(let i=0; i<=RETRY_ATTEMPTS; i++){
+      try {
+        if(i>0) pendingRequests.delete(cacheKey);
+        const data = await fetchWithTimeout(API_PROXY_PREFIX ? API_PROXY_PREFIX+encodeURIComponent(url) : url);
+        cache.set(cacheKey, data, ttl);
+        return data;
+      } catch(err) {
+        lastErr=err;
+        if(err.name==='AbortError') err.message=getT('timeout_err');
+        else if(err.message.includes('Failed to fetch')||err.message.includes('NetworkError')){err.message=getT('network_err');onlineStatus=false;}
+        if(i<RETRY_ATTEMPTS) await new Promise(r=>setTimeout(r, RETRY_DELAY*Math.pow(2,i)));
+      }
+    }
+    throw lastErr;
+  })();
+  pendingRequests.set(cacheKey, promise);
+  promise.finally(()=>{pendingRequests.delete(cacheKey); processQueue();});
+  return promise;
+};
+
+const processQueue = () => {
+  while(requestQueue.length>0 && activeRequests<MAX_CONCURRENT){
+    const {url,ttl,resolve,reject} = requestQueue.shift();
+    fetchJSON(url,ttl).then(resolve).catch(reject);
+  }
+};
+
+// ---------- Toast ----------
+const showToast = (msg,type='info',dur=3000) => {
+  const old=document.querySelector('.toast'); if(old)old.remove();
+  const t=document.createElement('div'); t.className=`toast toast-${esc(type)}`; t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},dur);
+};
+const showConnToast = (ok) => {
+  const now=Date.now();
+  if(ok&&!onlineStatus){onlineStatus=true; if(now-lastConnToast>10000){lastConnToast=now;showToast(getT('conn_back'),'ok');}}
+  else if(!ok&&onlineStatus){onlineStatus=false; if(now-lastConnToast>10000){lastConnToast=now;showToast(getT('conn_lost'),'err');}}
+};
+
+// ---------- 全局狀態 ----------
+let currentCompany='KMB_LWB', currentRoute='1A', currentDirection='outbound', fetchId=0;
+let activeTimers=[];
+const routeServiceTypes={};
+
+// ---------- MTR 靜態數據 ----------
+const MTR_LINES={'TWL':'荃灣線','TML':'屯馬線','EAL':'東鐵線','TCL':'東涌線','TKL':'將軍澳線','ISL':'港島線','KTL':'觀塘線','SIL':'南港島線','AEL':'機場快線','DRL':'迪士尼線'};
+const MTR_STATION_NAMES={'CEN':'中環','ADM':'金鐘','TST':'尖沙咀','JOR':'佐敦','YMT':'油麻地','MOK':'旺角','SKW':'太子','SSP':'深水埗','CSW':'長沙灣','LCK':'荔枝角','MEF':'美孚','TWS':'荃灣西','TSW':'荃灣','KOW':'九龍塘','TAP':'大圍','SHS':'顯徑','STW':'沙田圍','FTS':'粉嶺','SHS2':'上水','LWC':'羅湖','LOW':'落馬洲','HOK':'香港','KWB':'九龍灣','PKE':'寶琳','TKO':'將軍澳','NOP':'北角','QBD':'鰂魚涌','SKM':'石硤尾','SUN':'欣澳','TUC':'東涌','AIR':'機場','SKY':'青衣','DIK':'迪士尼','SHA':'沙田','POA':'寶馬山','HOM':'何文田','EXC':'博覽館','TSY':'青衣','LAK':'荔枝角','NAC':'南昌','OLY':'奧運','KET':'啟德','SHT':'宋皇臺','TKW':'土瓜灣','HUH':'紅磡','ETS':'尖東','AWE':'博覽館','TIK':'調景嶺','YAT':'油塘','LHP':'藍田','KWT':'葵興','KWF':'葵芳','LAI':'荔景','SWH':'西灣河','TAK':'太古','SOH':'柴灣','HFC':'杏花邨','FAU':'天后','CAB':'炮台山','SYP':'上環','SHW':'上環','WAC':'灣仔','MOS':'旺角東','HEO':'火炭','TWH':'大學','SHT2':'沙田'};
+const MTR_LINE_STATIONS={'TWL':['CEN','ADM','TST','JOR','YMT','MOK','SKW','SSP','CSW','LCK','MEF','TWS','TSW'],'TML':['TUC','SUN','TSY','KOW','TAP','SHA','STW','SHS','TIK','YAT','LHP','KWB','PKE','TKO','NOP'],'EAL':['TST','HUH','ETS','WAC','KOW','SHT2','SHA','FTS','SHS2','LWC','LOW'],'TCL':['HOK','KOW','TSY','AIR','SUN','TUC'],'TKL':['NOP','QBD','YAT','TIK','TKO'],'ISL':['CEN','ADM','SYP','SHW','WAC','CAB','FAU','TAK','SWH','SOH','HFC'],'KTL':['WAC','KOW','HUH','KWB','LHP','YAT','TIK','TKW','KET','SHT','NAC'],'SIL':['HOK','WAC','POA','TAK','SWH','SOH'],'AEL':['HOK','KOW','TSY','SUN','AIR'],'DRL':['SUN','DIK']};
+
+// ---------- API 函數 ----------
+const fetchRouteStops = async (route) => {
+  const er=encodeURIComponent(route);
+  if(currentCompany==='KMB_LWB'){
+    for(let st=1;st<=5;st++){try{const o=await fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${er}/outbound/${st}`,CACHE_TTL.ROUTE_INFO);if(o.data?.length){const i=await fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${er}/inbound/${st}`,CACHE_TTL.ROUTE_INFO).then(r=>r.data||[]).catch(()=>[]);routeServiceTypes[route]=st;return{outbound:o.data,inbound:i,serviceType:st};}}catch(e){}}
+    return{outbound:[],inbound:[],serviceType:1};
+  }
+  if(currentCompany==='CTB'){
+    const [o,i]=await Promise.allSettled([fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/${er}/outbound`,CACHE_TTL.ROUTE_INFO),fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/${er}/inbound`,CACHE_TTL.ROUTE_INFO)]);
+    const norm=d=>((d?.data)||[]).filter(x=>x?.stop).map(x=>({stop:String(x.stop),seq:x.seq||0,dir:x.dir||'O'}));
+    let ob=norm(o.status==='fulfilled'?o.value:null), ib=norm(i.status==='fulfilled'?i.value:null);
+    if(!ob.length&&!ib.length){try{const f=await fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/${er}`,CACHE_TTL.ROUTE_INFO);ob=norm(f);}catch(e){}}
+    return{outbound:ob,inbound:ib};
+  }
+  if(currentCompany==='GMB'){
+    let rid=null; for(const r of['HKI','KLN','NT']){try{const rl=await fetchJSON(`https://data.etagmb.gov.hk/route/${r}`,CACHE_TTL.ROUTE_INFO);for(const x of(rl.data?.routes||[])){if((x.route_code||x.route_no||x)===route){rid=x.route_id||x.id;break;}}if(rid)break;}catch(e){}}
+    if(!rid)return{outbound:[],inbound:[]}; routeServiceTypes[route]=rid;
+    const gd=currentDirection==='outbound'?1:2; const gs=await fetchJSON(`https://data.etagmb.gov.hk/route-stop/${encodeURIComponent(rid)}/${gd}`,CACHE_TTL.ROUTE_INFO);
+    const stops=(gs.data||[]).map((s,i)=>({stop:String(s.stop_id||s.stop),seq:s.stop_seq||s.seq||i+1}));
+    return{outbound:stops,inbound:stops.slice().reverse()};
+  }
+  if(currentCompany==='MTR'){const st=MTR_LINE_STATIONS[route.toUpperCase()]||[];const ob=st.map((s,i)=>({stop:s,seq:i+1}));return{outbound:ob,inbound:ob.slice().reverse()};}
+  if(currentCompany==='LRT'){const l=await fetchJSON('https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=ALL',CACHE_TTL.ETA);const ss=new Set((l.data?.platform_list||[]).filter(p=>p?.station_id).map(p=>p.station_id));const st=Array.from(ss).map((s,i)=>({stop:s,seq:i+1}));return{outbound:st,inbound:st.slice().reverse()};}
+  if(currentCompany==='MTR_BUS'){const b=await fetchJSON('https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule',CACHE_TTL.ETA);const st=(b.data?.busStop||[]).map((s,i)=>({stop:String(s.busStopId||s.stop_id),seq:i+1}));return{outbound:st,inbound:st.slice().reverse()};}
+  return{outbound:[],inbound:[]};
+};
+
+const fetchRouteInfo = async (route) => {
+  try{
+    if(currentCompany==='KMB_LWB'){for(let st=routeServiceTypes[route]||1;st<=5;st++){try{const r=await fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/route/${encodeURIComponent(route)}/${st}`,CACHE_TTL.ROUTE_INFO);if(r.data){routeServiceTypes[route]=st;return{outbound:{dest_tc:r.data.dest_tc||'',orig_tc:r.data.orig_tc||''},inbound:{dest_tc:r.data.orig_tc||'',orig_tc:r.data.dest_tc||''}};}}catch(e){}}}
+    if(currentCompany==='CTB'){const r=await fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/route/CTB/${encodeURIComponent(route)}`,CACHE_TTL.ROUTE_INFO);const d=Array.isArray(r.data)?r.data[0]:r.data;if(d)return{outbound:{dest_tc:d.dest_tc||'',orig_tc:d.orig_tc||''},inbound:{dest_tc:d.orig_tc||'',orig_tc:d.dest_tc||''}};}
+  }catch(e){} return null;
+};
+
+const fetchStopEta = async (stopId, route) => {
+  const st=routeServiceTypes[route]||1;
+  if(currentCompany==='KMB_LWB'){try{const r=await fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${encodeURIComponent(stopId)}/${encodeURIComponent(route)}/${st}`,CACHE_TTL.ETA);return r.data||[];}catch(e){const f=await fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${encodeURIComponent(stopId)}`,CACHE_TTL.ETA);return(f.data||[]).filter(x=>x.route===route&&(!x.service_type||x.service_type==st));}}
+  if(currentCompany==='CTB'){try{const r=await fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/${encodeURIComponent(stopId)}/${encodeURIComponent(route)}`,CACHE_TTL.ETA);return(r.data||[]).map(e=>{let t=e.eta||'';if(t&&t.indexOf(' ')>-1&&t.indexOf('T')===-1){const[z,ti]=t.split(' ');const o=-new Date().getTimezoneOffset()/60,s=o>=0?'+':'-',os=s+String(Math.abs(o)).padStart(2,'0')+':00';t=z+'T'+ti+os;}return{...e,eta:t};});}catch(e){return[];}}
+  if(currentCompany==='GMB'){try{const r=await fetchJSON(`https://data.etagmb.gov.hk/eta/stop/${encodeURIComponent(stopId)}`,CACHE_TTL.ETA);return(r.data||[]).filter(x=>(x.route_no||x.route)===route);}catch(e){return[];}}
+  if(currentCompany==='MTR'){const r=await fetchJSON(`https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${route.toUpperCase()}&sta=${encodeURIComponent(stopId)}&lang=${currentLang==='zh-Hant'?'tc':currentLang==='en'?'en':'sc'}`,CACHE_TTL.ETA);return parseMtrEta(r,route.toUpperCase(),stopId);}
+  if(currentCompany==='LRT'){const r=await fetchJSON(`https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=${encodeURIComponent(stopId)}`,CACHE_TTL.ETA);return parseLrtEta(r,stopId);}
+  if(currentCompany==='MTR_BUS'){const r=await fetchJSON('https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule',CACHE_TTL.ETA);return parseMtrBusEta(r);}
+  return [];
+};
+
+const fetchStopName = async (stopId) => {
+  if(!validateStopId(stopId))return String(stopId);
+  const ck=`stop_${currentCompany}_${stopId}_${currentLang}`,c=cache.get(ck);if(c)return c;
+  let n=stopId;try{const k=nameKey();
+    if(currentCompany==='KMB_LWB'){const r=await fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${encodeURIComponent(stopId)}`,CACHE_TTL.STOP_NAME);n=r.data?.[k]||r.data?.name_tc||stopId;}
+    else if(currentCompany==='CTB'){const r=await fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/stop/CTB/${encodeURIComponent(stopId)}`,CACHE_TTL.STOP_NAME);n=r.data?.[k]||r.data?.name_tc||stopId;}
+    else if(currentCompany==='GMB'){const r=await fetchJSON(`https://data.etagmb.gov.hk/stop/${encodeURIComponent(stopId)}`,CACHE_TTL.STOP_NAME);n=r.data?.[k]||r.data?.name_tc||stopId;}
+    else if(currentCompany==='MTR'||currentCompany==='LRT')n=MTR_STATION_NAMES[stopId]||`車站 ${stopId}`;
+  }catch(e){} cache.set(ck,n,CACHE_TTL.STOP_NAME);return n;
+};
+
+// ---------- ETA 解析 ----------
+const parseMtrEta=(d,lc,sid)=>{const r=[];if(!d?.data?.[lc])return r;for(const dir of['UP','DOWN'])for(const t of(d.data[lc][dir]||[])){if(t.valid==='N'||(t.sta!==sid&&t.station!==sid&&t.station_id!==sid))continue;let eta=t.time||t.eta||'';if(eta&&/^\d{2}:\d{2}$/.test(eta)){const now=new Date(),o=-now.getTimezoneOffset()/60,s=o>=0?'+':'-',os=s+String(Math.abs(o)).padStart(2,'0')+':00';eta=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${eta}:00${os}`;}
+    r.push({route:lc,dest:MTR_STATION_NAMES[t.dest||'']||t.dest,eta,platform:t.plat||t.platform||'',direction:dir});}return r;};
+
+const parseLrtEta=(d,sid)=>{const r=[];if(!d)return r;for(const p of(d.data?.platform_list||[])){if(!p||(p.station_id&&p.station_id!==sid))continue;for(const rt of(p.route_list||[])){let eta=rt.time_ch||rt.eta||rt.time;if(!eta)continue;if(typeof eta==='string'){if(eta.includes('即將到站')||eta.includes('即將到達'))eta=new Date(Date.now()+30000).toISOString();else{const m=eta.match(/(\d+)\s*分鐘/);if(m)eta=new Date(Date.now()+parseInt(m[1])*60000).toISOString();else if(/^\d{2}:\d{2}$/.test(eta)){const n=new Date(),o=-n.getTimezoneOffset()/60,s=o>=0?'+':'-',os=s+String(Math.abs(o)).padStart(2,'0')+':00';eta=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}T${eta}:00${os}`;}}}
+    r.push({route:rt.route_no||rt.route||'',dest:rt.dest_ch||rt.destination||rt.dest||'',eta,platform:p.name_tc||p.name||''});}}return r;};
+
+const parseMtrBusEta=d=>{const r=[];if(!d)return r;for(const s of(d.data?.busStop||[])){for(const b of(s.bus||s.buses||[])){const secs=b.arrivalTimeInSecond||b.arrival_time||b.time;if(secs==null)continue;r.push({route:b.route||b.route_no||'',dest:b.destination||b.dest||'',eta:new Date(Date.now()+parseInt(secs)*1000).toISOString(),stop:s.busStopId||s.stop_id});}}return r;};
+
+// ---------- 渲染 ----------
+const renderEtaRow=(stop,idx,total)=>{const sid=stop.stop||stop.stop_id||'',seq=stop.seq||idx+1;let badge=idx===0?'<span class="badge-org">起點站</span>':idx===total-1?'<span class="badge-term">終點站</span>':'<span class="badge-mid">中途站</span>';return`<div class="grid grid-cols-12 items-center py-3 px-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition row-enter cv-auto gpu" data-stop-id="${esc(sid)}"><div class="col-span-1 text-center text-sm font-bold text-slate-400">${seq}</div><div class="col-span-6"><div class="font-medium text-slate-800 dark:text-slate-100" data-stop-name="${esc(sid)}">${getT('loading')}</div><div class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">${badge}<button type="button" class="ml-2 text-[10px] text-blue-500 hover:text-blue-700" data-action="open-modal" data-stop-id="${esc(sid)}">${getT('same_stop_title')}</button></div></div><div class="col-span-5 text-right" data-eta-container><span class="text-xs text-slate-400"><span class="spinner" aria-hidden="true"></span> ${getT('loading')}</span></div></div>`;};
+
+const renderEtas=etas=>{if(!etas?.length)return'<span class="text-xs text-slate-400">--</span>';const s=etas.slice().sort((a,b)=>new Date(a.eta)-new Date(b.eta));let h='';for(let i=0;i<Math.min(s.length,5);i++){const m=calcMin(s[i].eta),c=i===0?'eta-1':i===1?'eta-2':i===2?'eta-3':'eta-4',t=m<=0?getT('arriving_soon'):`${m} ${getT('min')}`,p=Math.max(10,Math.min(100,100-m*3)),b=i<3?`<span class="bar"><span class="bar-fill" style="width:${p}%"></span></span>`:'';h+=`<span class="${c}">${t}</span>${b} `;}if(s.length>5){h+=`<button type="button" class="text-[10px] text-blue-500 hover:underline" data-action="expand-eta" aria-expanded="false">${getT('expand')} +${s.length-5}</button><div class="hidden" data-extra-eta>${s.slice(5).map(e=>`<span class="eta-4">${calcMin(e.eta)<=0?getT('arriving_soon'):`${calcMin(e.eta)} ${getT('min')}`}</span>`).join(' ')}</div>`;}return h;};
+
+// ---------- 增量 DOM 更新 ----------
+const updateEtaDisplay=(container,etas)=>{if(!container)return;const h=renderEtas(etas);if(container.dataset.lastHtml!==h){container.innerHTML=h;container.dataset.lastHtml=h;}};
+
+// ---------- 可視區域觀察器 ----------
+let viewportObserver;
+const initObserver=()=>{if(viewportObserver)viewportObserver.disconnect();viewportObserver=new IntersectionObserver(entries=>{entries.forEach(en=>{if(en.isIntersecting){const el=en.target;const sid=el.dataset.stopId;if(sid&&el.dataset.loaded!=='true'){el.dataset.loaded='true';const stop={stop:sid,seq:parseInt(el.querySelector('.col-span-1')?.textContent)||0};loadStopRow(el,stop,0,0,fetchId);}viewportObserver.unobserve(el);}});},{rootMargin:'150px'});};
+
+// ---------- 加載站點（競態保護 + 增量更新） ----------
+const loadStopRow=async(rowEl,stop,idx,total,fidSnap)=>{
+  const sid=stop.stop||stop.stop_id||'';if(fidSnap!==fetchId)return;
+  try{const n=await fetchStopName(sid);if(fidSnap===fetchId){const ne=rowEl.querySelector('[data-stop-name]');if(ne&&ne.textContent!==n)ne.textContent=n;}}catch(e){}
+  try{const etas=await fetchStopEta(sid,currentRoute);if(fidSnap===fetchId){updateEtaDisplay(rowEl.querySelector('[data-eta-container]'),etas);}}catch(e){if(fidSnap===fetchId){const c=rowEl.querySelector('[data-eta-container]');if(c&&c.dataset.lastHtml!=='err'){c.innerHTML='<span class="text-xs text-red-400">載入失敗</span>';c.dataset.lastHtml='err';}}}
+};
+
+// ---------- Modal（快速打開：先顯示緩存） ----------
+const openModal=async(sid)=>{
+  const modal=$('stop-modal'),content=$('modal-content'),nameEl=$('modal-stop-name');
+  modal.classList.remove('hidden');nameEl.textContent=await fetchStopName(sid);
+  // 立即顯示當前路線的緩存 ETA
+  const cached=cache.get(`eta_${sid}_${currentRoute}_${CACHE_TTL.ETA}`);
+  content.innerHTML=cached?`<div class="gheader ${currentCompany==='KMB_LWB'?(isLwbRoute(currentRoute)?'lwb':'kmb'):currentCompany.toLowerCase()}">${esc(currentRoute)}</div><div class="space-y-1 mb-3"><div class="flex justify-between text-xs py-1.5 px-3 bg-white dark:bg-slate-700 rounded-lg"><span><span class="tag ${currentCompany==='KMB_LWB'?(isLwbRoute(currentRoute)?'lwb':'kmb'):currentCompany.toLowerCase()}">${esc(currentRoute)}</span></span><span>${renderEtas(cached)}</span></div></div>`:`<div class="flex items-center gap-2 text-slate-400"><span class="spinner"></span> ${getT('loading_stop_eta')}</div>`;
+  // 異步加載其他公司
+  const q=[{co:'KMB',l:'九巴',c:'kmb',p:fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${encodeURIComponent(sid)}`,CACHE_TTL.ETA).then(r=>(r.data||[]).filter(e=>!isLwbRoute(e.route)))},{co:'LWB',l:'龍運',c:'lwb',p:fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${encodeURIComponent(sid)}`,CACHE_TTL.ETA).then(r=>(r.data||[]).filter(e=>isLwbRoute(e.route)))},{co:'CTB',l:'城巴',c:'ctb',p:fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/${encodeURIComponent(sid)}`,CACHE_TTL.ETA).then(r=>r.data||[])}];
+  const results=await Promise.allSettled(q.map(x=>x.p));let h=content.innerHTML;
+  results.forEach((r,i)=>{if(r.status==='fulfilled'&&r.value.length){h+=`<div class="gheader ${q[i].c}">${q[i].l} ● ${r.value.length}</div>`;}});
+  if(!cached) h=content.innerHTML; // 保持 loading 狀態
+  content.innerHTML=h;
+};
+const closeModal=()=>{$('stop-modal').classList.add('hidden');setTimeout(()=>$('modal-content').innerHTML='',200);};
+
+// ---------- 主加載（含後台預取） ----------
+const loadRoute=async()=>{
+  const fid=++fetchId;
+  const dirText=currentDirection==='outbound'?getT('outbound'):getT('inbound');
+  $('info-direction').textContent=dirText;
+  $('stops-container').setAttribute('aria-busy','true');
+  $('stops-container').innerHTML=`<div class="p-8 text-center text-slate-400"><span class="spinner"></span> ${getT('loading')}</div>`;
+  $('proxy-hint').style.display='none';
+  try{
+    const stopsData=await fetchRouteStops(currentRoute);
+    if(fid!==fetchId)return;
+    const stops=currentDirection==='outbound'?(stopsData.outbound||[]):(stopsData.inbound||[]);
+    if(!stops.length){$('stops-container').innerHTML=`<div class="error-box">${getT('search_error')}<button class="btn-retry" data-action="retry">${getT('retry')}</button></div>`;return;}
+    const info=await fetchRouteInfo(currentRoute);
+    let dest=info?.[currentDirection]?.dest_tc||'';
+    if(!dest&&stops[0]){try{const fe=await fetchStopEta(stops[0].stop||stops[0].stop_id,currentRoute);dest=fe[0]?.dest_tc||fe[0]?.dest||'';}catch(e){}}
+    $('info-route').textContent=currentRoute;
+    $('info-direction').textContent=dest?`${dirText} → ${dest}`:dirText;
+    $('dest-text').textContent=dest; $('dest-pill').style.display=dest?'':'none';
+    // 批量渲染
+    const container=$('stops-container');container.innerHTML='';
+    const frag=document.createDocumentFragment();const tmp=document.createElement('div');
+    stops.forEach((s,i)=>{tmp.innerHTML=renderEtaRow(s,i,stops.length);frag.appendChild(tmp.firstChild);});
+    container.appendChild(frag);container.setAttribute('aria-busy','false');
+    // 可視區域優先加載
+    initObserver();
+    container.querySelectorAll('[data-stop-id]').forEach(el=>viewportObserver.observe(el));
+    // 後台預取反方向
+    if(currentDirection==='outbound')setTimeout(()=>{fetchRouteStops(currentRoute).catch(()=>{});},2000);
+    // 天氣和公告
+    fetchJSON('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc',CACHE_TTL.WEATHER).then(d=>{
+      let h='';if(d.temperature?.data?.[0])h+=`<span><i class="fa-solid fa-temperature-half text-red-400"></i> ${d.temperature.data[0].value}°C</span> `;
+      $('weather-content').innerHTML=h||'<span class="text-slate-400">--</span>';$('weather-update-time').textContent=new Date().toLocaleTimeString('zh-HK');
+    }).catch(()=>{});
+    showConnToast(true);
+  }catch(err){$('stops-container').innerHTML=`<div class="error-box">${getT('api_error')}<button class="btn-retry" data-action="retry">${getT('retry')}</button></div>`;if(!onlineStatus)$('proxy-hint').style.display='block';showConnToast(false);}
+};
+
+// ---------- UI ----------
+const updateUILanguage=()=>{document.querySelectorAll('[data-lang]').forEach(el=>{const t=getT(el.getAttribute('data-lang'));if(t&&t!==el.getAttribute('data-lang'))el.textContent=t;});};
+const startClock=()=>{const tick=()=>{$('live-clock').textContent=new Date().toLocaleTimeString('zh-HK',{hour12:false});activeTimers.push(setTimeout(tick,1000));};tick();};
+const switchTab=t=>{['eta','timetable','service'].forEach(x=>{$(`panel-${x}`).classList.add('hidden');$(`tab-btn-${x}`).setAttribute('aria-selected','false');});$(`panel-${t}`).classList.remove('hidden');$(`tab-btn-${t}`).setAttribute('aria-selected','true');};
+
+// ---------- 事件 ----------
+const initEvents=()=>{
+  $('search-btn').onclick=()=>{const v=$('route-input').value.trim().toUpperCase();if(validateRouteInput(v)){currentRoute=v;loadRoute();}else showToast('請輸入有效的路線編號','err');};
+  $('route-input').addEventListener('keydown',e=>{if(e.key==='Enter'){$('search-btn').click();}});
+  $('company-select').onchange=e=>{currentCompany=e.target.value;Object.keys(routeServiceTypes).forEach(k=>delete routeServiceTypes[k]);cache.clear();const d={'KMB_LWB':'1A','CTB':'720','GMB':'801','MTR':'TWL','LRT':'505','MTR_BUS':'K51'};currentRoute=d[currentCompany]||'1A';$('route-input').value=currentRoute;loadRoute();};
+  document.querySelectorAll('.dir-btn').forEach(b=>b.onclick=()=>{currentDirection=b.dataset.dir;document.querySelectorAll('.dir-btn').forEach(x=>{x.className='dir-btn py-2.5 px-3 bg-slate-100 text-slate-600 text-sm rounded-xl font-medium hover:bg-slate-200 transition text-left flex justify-between items-center dark:bg-slate-700 dark:text-slate-300';x.setAttribute('aria-pressed','false');});b.className='dir-btn py-2.5 px-3 bg-blue-600 text-white text-sm rounded-xl font-medium shadow-sm transition text-left flex justify-between items-center';b.setAttribute('aria-pressed','true');loadRoute();});
+  $('tab-btn-eta').onclick=()=>switchTab('eta');$('tab-btn-timetable').onclick=()=>switchTab('timetable');$('tab-btn-service').onclick=()=>switchTab('service');
+  $('modal-close-btn').onclick=closeModal;$('stop-modal').onclick=e=>{if(e.target===$('stop-modal'))closeModal();};
+  $('theme-toggle').onclick=()=>{const d=document.documentElement.classList.toggle('dark');$('theme-icon').className=d?'fa-solid fa-sun text-sm':'fa-solid fa-moon text-sm';try{localStorage.setItem('hk-transit-theme',d?'dark':'light');}catch(e){}};
+  $('lang-select').onchange=e=>{currentLang=e.target.value;try{localStorage.setItem('hk-transit-lang',currentLang);}catch(e){}updateUILanguage();loadRoute();};
+  document.addEventListener('click',e=>{const t=e.target.closest('[data-action]');if(!t)return;const a=t.dataset.action;if(a==='retry')loadRoute();else if(a==='open-modal'&&validateStopId(t.dataset.stopId))openModal(t.dataset.stopId);else if(a==='expand-eta'){const x=t.nextElementSibling;if(x){x.classList.toggle('hidden');t.textContent=x.classList.contains('hidden')?`${getT('expand')} +`:getT('collapse');t.setAttribute('aria-expanded',!x.classList.contains('hidden'));}}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('stop-modal').classList.contains('hidden'))closeModal();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){activeTimers.forEach(clearTimeout);activeTimers=[];pendingRequests.clear();}else{startClock();loadRoute();}});
+};
+
+// ---------- 初始化 ----------
+const init=()=>{try{const s=localStorage.getItem('hk-transit-lang');if(s&&T[s]){$('lang-select').value=currentLang=s;}}catch(e){}updateUILanguage();initEvents();startClock();loadRoute();};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+</script>
+</body>
+</html>
