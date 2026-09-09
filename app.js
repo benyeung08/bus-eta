@@ -336,7 +336,26 @@ function dist(a,b,c,d){ // 米（Haversine）
   const h=Math.sin(dLat/2)**2 + Math.cos(a*r)*Math.cos(c*r)*Math.sin(dLng/2)**2;
   return 2*R*Math.asin(Math.sqrt(h));
 }
-function nowMs(){ return Date.now(); }
+/* 客戶端時鐘與伺服器時間的偏差（毫秒）。
+   校正後：分鐘數 = 到站時間戳 − (用戶端現在 + 偏差)。
+   只從「即時到站」回應取得（這類請求不經快取，必定是新鮮的），
+   避免拿快取裡過舊的時間戳來校正，反而製造更大誤差。 */
+const TIME_SKEW = {ms:0, set:false, src:''};
+function applyServerTime(j){
+  const t = pick(j,'generated_timestamp','generatedTimestamp','timestamp');
+  if(!t) return;
+  const d = new Date(t);
+  if(isNaN(d)) return;
+  const skew = d.getTime() - Date.now();
+  if(!Number.isFinite(skew) || Math.abs(skew) > 24*3600e3) return;   // 明顯異常就不採用
+  TIME_SKEW.ms = skew; TIME_SKEW.set = true; TIME_SKEW.src = String(t);
+}
+function nowMs(){ return Date.now() + (TIME_SKEW.set ? TIME_SKEW.ms : 0); }
+/* 取得即時回應時一併做兩件事：校正時鐘、留下原始回應供「複製診斷」 */
+function etaSnap(j){
+  applyServerTime(j);
+  if(j && typeof j==='object'){ LAST_RAW.last = j; LAST_RAW.lastAt = new Date().toISOString(); }
+}
 function minsTo(iso){
   if(!iso) return null;
   let d = new Date(iso);
@@ -2001,6 +2020,15 @@ async function fetchStopEta(){
   }
   rows = rows.filter(r=>r.route);
   rows.forEach(r=>{ r.min = toMin(r.min); });
+  /* 目的地後備：官方到站回應不一定帶目的地
+     （小巴完全不提供，港鐵／輕鐵也常在夜間缺），
+     此時改由內建路線表補，避免出現「往 —」這種看不懂的顯示。 */
+  rows.forEach(r=>{
+    if(!r.dest){
+      const m = D[co]?.routeMap?.get(String(r.route));
+      r.dest = (m && m.dest) || routeDest(co, r.route, r.bound) || '';
+    }
+  });
   rows.sort((a,b)=>{
     const x = a.min===null?999:(a.min<0?998:a.min), y = b.min===null?999:(b.min<0?998:b.min);
     return x-y || String(a.route).localeCompare(String(b.route),'zh');
@@ -2040,7 +2068,7 @@ async function fetchStopEta(){
     <div class="act">
       <button class="btn sm ghost" id="etaRefresh">↻ 立即更新</button>
       <button class="btn sm ghost" id="etaFav">★ 收藏此站</button>
-      ${co==='KMB'? '<button class="btn sm ghost" id="etaDiag">📋 複製診斷</button>':''}
+      <button class="btn sm ghost" id="etaDiag">📋 複製診斷</button>
     </div>
   </div>`;
   $('#etaRefresh').onclick = fetchStopEta;
@@ -2049,14 +2077,18 @@ async function fetchStopEta(){
   if(dg) dg.onclick = async ()=>{
     const info = {
       stop: id, co, at: new Date().toISOString(),
-      err: LAST_RAW.kmbErr,
-      raw: LAST_RAW.kmb ? JSON.stringify(LAST_RAW.kmb).slice(0, 1200) : null,
-      rows: rows.map(r=>({route:r.route, min:r.min, sched:!!r.sched}))
+      clockSkewMs: TIME_SKEW.set ? TIME_SKEW.ms : null,
+      clockSkewFrom: TIME_SKEW.src || null,
+      err: LAST_RAW.kmbErr || netErr(),
+      raw: LAST_RAW.last ? JSON.stringify(LAST_RAW.last).slice(0, 1200) : null,
+      rawAt: LAST_RAW.lastAt || null,
+      rows: rows.map(r=>({route:r.route, min:r.min, sched:!!r.sched, dest:r.dest||''}))
     };
     const txt = JSON.stringify(info, null, 1);
     try{ await navigator.clipboard.writeText(txt); dg.textContent = '✓ 已複製'; }
     catch(e){
-      prompt('複製下列診斷資訊：', txt);
+      try{ prompt('複製下列診斷資訊：', txt); }
+      catch(e2){ console.log(txt); }
     }
     setTimeout(()=>{ if(dg) dg.textContent = '📋 複製診斷'; }, 2000);
   };
@@ -2167,6 +2199,21 @@ async function mtrStationEta(sta){
   return got.filter(Boolean);
 }
 /* 輕鐵到站：官方以站號回傳各月台路線 */
+/* 小巴目的地：官方到站 API 不提供，一律由內建資料（GitHub）帶入 */
+function gmbRouteDest(route, bound){
+  const r0 = D.GMB.routeMap?.get(String(route));
+  if(r0 && r0.dest) return r0.dest;
+  const list = D.GMB.route || [];
+  const r1 = list.find(x=>String(x.route)===String(route) && (!bound || x.bound===bound))
+          || list.find(x=>String(x.route)===String(route));
+  return r1 ? (r1.dest || '') : '';
+}
+/* 取該路線在此站的所有班次（含目的地），並保留最快的一班 */
+function gmbRowsWithDest(j, seq, bound, route, dest){
+  const rows = gmbEtaRows(j, seq, bound, route, dest);
+  return rows.map(r=>Object.assign({}, r, {dest: r.dest || dest || ''}));
+}
+
 /* 某個輕鐵站有哪些路線（由內建路線表反查） */
 function lrtRoutesAt(id){
   const arr = D.LRT.routesAtStop?.get(String(id)) || [];
@@ -2250,6 +2297,7 @@ async function ctbStopEta(stopId){
     LAST_RAW.attempted++;
     try{
       const j = await getJSON(EP.ctbEta(stopId, r.route), {timeout:12000});
+      etaSnap(j);
       let arr = asArray(pick(j,'data'));
       // 依 hkbus 用法：先篩方向，再取站序最接近者（資料未必 100% 相符）
       if(r.dir){
@@ -2285,7 +2333,7 @@ async function ctbStopEta(stopId){
 /* seq / bound 有值時才篩選：小巴到站 API 一次回傳整條路線所有站的班次，
    不篩選就會拿別站的時間當成這一站的（這是之前最主要的錯誤來源）。
    依 hkbus 官方用法：route_seq 1=去程(O) 2=回程(I)，stop_seq = 站序+1 */
-function gmbEtaRows(j, seq, bound, defRoute){
+function gmbEtaRows(j, seq, bound, defRoute, defDest){
   const out = [];
   const items = plainArr(j);
   for(const e of items){
@@ -2311,10 +2359,18 @@ function gmbEtaRows(j, seq, bound, defRoute){
                         ?? defRoute ?? '');
       const min = toMin(pick(t,'diff','diff_min')) ?? minsTo(pick(t,'timestamp','eta','estimatedArrivalTime'));
       const iso = pick(t,'timestamp','eta','estimatedArrivalTime') ?? null;
+      /* 官方到站回應沒有目的地欄位，只有 description_tc（路線描述）。
+         把它當目的地會顯示成「往 屯門碼頭 - 上水站」這種奇怪的東西，
+         甚至拿不到時整欄空白。hkbus 的做法是 dest 留空、description_tc 當備註，
+         目的地則由路線表提供——這裡改為由呼叫端傳入內建資料的目的地。 */
       let rmk = pick(t,'remarks_tc') || pick(e,'remarks_tc') || '';
-      if(e.enabled===false || String(e.enabled)==='0') rmk = pick(e,'description_tc') || '服務暫停';
-      out.push({route, min, iso,
-                dest: pick(e,'description_tc') || pick(t,'description_tc') || '', rmk});
+      if(e.enabled===false || String(e.enabled)==='0'){
+        rmk = pick(e,'description_tc') || '服務暫停';
+      } else if(!rmk){
+        const d = pick(e,'description_tc') || pick(t,'description_tc');
+        if(d && d !== defDest) rmk = d;
+      }
+      out.push({route, min, iso, dest: defDest || '', rmk});
     }
   }
   // 同一路線只留最快一班
@@ -2351,24 +2407,38 @@ function kmbPickEta(data, it){
   return arr;
 }
 async function kmbRouteEta(stopId, it){
-  const j = await getJSON(EP.kmbEta(stopId, it.route, it.service_type), {timeout:12000});
-  const data = asArray(pick(j,'data'));
-  if(!data.length) return null;
-  const cand = kmbPickEta(data, it);
-  if(!cand.length) return null;
-  let e = null;
-  for(const c of cand){ const r = kmbEtaOf(c); if(r.min!==null){ e = r; break; }
-                        if(!e) e = r; }
-  if(!e) return null;
-  return {route:it.route, min:e.min, iso:e.iso,
-          dest: e.dest || routeDest('KMB', it.route, it.bound) || '',
-          rmk: e.rmk || ''};
+  /* service_type 是必要參數。整站端點的回應不一定給這個欄位，
+     缺了會組出 .../265M/undefined 這種網址而查不到班次，
+     看起來就像「整站都沒車」。hkbus 一律帶入路線的 serviceType，這裡比照辦理，
+     並在第一次查不到時改試 1（最常見的服務類型）。 */
+  let st = Number(it.service_type);
+  if(!Number.isFinite(st) || st < 1) st = 1;
+  const tries = st === 1 ? [1] : [st, 1];
+  for(const s of tries){
+    let j;
+    try{ j = await getJSON(EP.kmbEta(stopId, it.route, s), {timeout:12000}); }
+    catch(e){ continue; }
+    etaSnap(j);
+    const data = asArray(pick(j,'data'));
+    if(!data.length) continue;
+    const cand = kmbPickEta(data, it);
+    if(!cand.length) continue;
+    let e = null;
+    for(const c of cand){ const r = kmbEtaOf(c); if(r.min!==null){ e = r; break; }
+                          if(!e) e = r; }
+    if(e && e.min!==null)
+      return {route:it.route, min:e.min, iso:e.iso,
+              dest: e.dest || routeDest('KMB', it.route, it.bound) || '',
+              rmk: e.rmk || ''};
+  }
+  return null;
 }
 async function kmbStopEta(id){
   let rows = [];
   try{
     const j = await getJSON(EP.kmbStopEta(id), {timeout:15000});
     LAST_RAW.kmb = j; LAST_RAW.kmbErr = null;
+    etaSnap(j);
     rows = asArray(pick(j,'data')).map(d=>{
       const e = kmbEtaOf(d);
       return {route:pick(d,'route'),
@@ -2436,10 +2506,11 @@ async function gmbStopEta(stopId){
   if(built.length){
     const got = await pool(built, 4, async it=>{
       LAST_RAW.attempted++;
+      const dest = gmbRouteDest(it.route, it.bound);
       try{
         const j = await getJSON(EP.gmbEta(it.gtfs, stopId), {timeout:12000, tries:proxyOrder().slice(0,2)});
-        const first = gmbEtaRows(j, it.seq, it.bound, it.route)[0];
-        if(first) return {route:it.route, min:first.min, iso:first.iso, dest:first.dest, rmk:first.rmk};
+        etaSnap(j);
+        return gmbRowsWithDest(j, it.seq, it.bound, it.route, dest)[0] || null;
       }catch(e){ etaFail(e); }
       return null;
     });
@@ -2457,13 +2528,13 @@ async function gmbStopEta(stopId){
   }catch(e){ return []; }
   if(!routeIds.length) return [];
   const out = await pool(routeIds.slice(0,12), 4, async r=>{
+    const dest = gmbRouteDest(r.id, '');
     for(const rid of [r.gtfs, r.id]){
       if(!rid) continue;
       for(const u of EP.gmbEtaAlts(rid, stopId)){
         try{
           const j = await getJSON(u, {timeout:12000, tries:proxyOrder().slice(0,2)});
-          const first = gmbEtaRows(j)[0];
-          if(first) return {route:r.id, min:first.min, iso:first.iso, dest:first.dest, rmk:first.rmk};
+          return gmbRowsWithDest(j, undefined, '', r.id, dest)[0] || null;
         }catch(e){}
       }
     }
@@ -2479,6 +2550,7 @@ async function nlbStopEta(stopId){
     LAST_RAW.attempted++;
     try{
       const j = await getJSON(EP.nlbEta(r.id, stopId), {timeout:12000});
+      etaSnap(j);
       const arr = asArray(pick(j,'estimatedArrivals','data')).filter(x=>pick(x,'estimatedArrivalTime'));
       const a = arr[0];
       if(!a){
@@ -3267,13 +3339,28 @@ const DIAG = [
      診斷時逐一嘗試，並回報哪一種有資料 */
   ['輕鐵到站',   'LRT',  ['001','1','10','920']],
 ];
-/* 只連得到還不夠，要真的有資料才算正常 */
+/* 資料筆數（陣列長度／物件鍵數） */
 function diagCount(j){
   if(!j || typeof j!=='object') return 0;
   const a = plainArr(j);
   if(a.length) return a.length;
   if(j.data && typeof j.data==='object' && !Array.isArray(j.data)) return Object.keys(j.data).length;
   return 0;
+}
+/* 真正「有到站時間」的筆數。
+   到站 API 常回傳多筆但 eta 全為 null（非服務時段、參數不對…），
+   只看筆數會把這種情況誤判成正常。 */
+function diagEtaCount(j){
+  const a = plainArr(j);
+  if(!a.length) return 0;
+  let n = 0;
+  for(const e of a){
+    if(!e || typeof e!=='object') continue;
+    const t = pick(e,'eta','timestamp','estimatedArrivalTime');
+    if(t && String(t).trim() && String(t) !== 'null') n++;
+    else if(Number.isFinite(+pick(e,'diff','diff_min','ttnt'))) n++;
+  }
+  return n;
 }
 function embRow(name, key, embedded){
   const d = D[key] || {};
