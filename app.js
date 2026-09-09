@@ -1170,6 +1170,7 @@ function waitLrt(ms=8000){
 }
 async function loadLrt(){
   if(D.LRT.ready) return;
+  await lrtSeqEnsure();          // 先備妥站序，才能填進路線表
   const rsAt = new Map();
   const routeSet = new Set();
   const stops = LRT_STOPS.map(([id, tc, la, lo, rs])=>{
@@ -1180,7 +1181,8 @@ async function loadLrt(){
   D.LRT.stop         = stops;
   D.LRT.stopById     = new Map(stops.map(x=>[x.id, x]));
   D.LRT.routesAtStop = rsAt;
-  D.LRT.route        = [...routeSet].map(r=>({co:'LRT', route:r, bound:'', orig:'', dest:''}));
+  D.LRT.route        = [...routeSet].map(r=>({co:'LRT', route:r, bound:'', orig:'', dest:'',
+                          stops: lrtSeqOf(r)}));
   D.LRT.ready        = stops.length>0;
   if(stops.length) _allStopsCache = null;
 }
@@ -1717,6 +1719,35 @@ function renderNearby(pos){
   loadNearbyRoutes();                     // 背景補算路線
   fillNearEtas();                         // 背景補上各站即時分鐘數
 }
+async function renderLrtRoute(co, route){
+  const box = $('#routeBox');
+  let stops = lrtSeqOf(route);
+  if(!stops.length){
+    // 內建站序尚未解壓完成時，從索引反查（無順序）
+    const rev = [];
+    for(const [sid, arr] of (D.LRT.routesAtStop || new Map()))
+      if((arr||[]).some(x=>String(x.route)===String(route))) rev.push(sid);
+    stops = rev;
+  }
+  if(!stops.length){
+    box.innerHTML = `<div class="card"><h2><span class="badge lrt">${esc(route)}</span> 輕鐵</h2>
+      <div class="empty">找不到此路線的站序資料。</div></div>`;
+    return;
+  }
+  box.innerHTML = `<div class="card">
+    <div class="spread"><h2 style="margin:0"><span class="badge lrt">${esc(route)}</span> 輕鐵</h2>
+      <span class="tiny muted">共 ${stops.length} 站</span></div>
+    <div class="sep"></div>
+    <div class="stoplist">${stops.map((sid,i)=>{
+      const s = D.LRT.stopById?.get(String(sid)) || {};
+      return `<div class="stoprow" data-co="LRT" data-id="${esc(sid)}">
+        <span class="stopdot"></span>
+        <div style="flex:1;min-width:0"><div class="small">${i+1}. ${esc(s.tc||sid)}</div></div>
+        <span class="eta tiny"></span></div>`;
+    }).join('')}</div>
+    <div class="tiny muted" style="margin-top:8px">點站名看該站即時到站。</div></div>`;
+}
+
 /* 統一渲染：同一張卡片，用 chip 切換「車站／路線」＋依營辦商篩選 */
 function nearCounts(){
   const c = {ALL:0, KMB:0, CTB:0, GMB:0, NLB:0, MTRB:0, MTR:0, LRT:0, FERRY:0};
@@ -2333,6 +2364,32 @@ function gmbRowsWithDest(j, seq, bound, route, dest){
   return rows.map(r=>Object.assign({}, r, {dest: r.dest || dest || ''}));
 }
 
+/* ---------- 輕鐵路線站序（GitHub 開放資料） ----------
+   原本只有「站 → 路線」，沒有「路線 → 站序」，
+   所以點輕鐵路線進去看不到站序表。這裡補上。 */
+const EMB_LRT_SEQ = "H4sIAMAEoWoC/7VWW24DIQz8z1GqfJiHgT1CpUpdpdfJ4QtjF2iSzZIt/bFWGM+MH8Ay8fX9+nExROdsLayD9bAMG2BjsRY7sWAXLjbhW5yhrCyWTpyBP6/4ruu6J7VYwV1gU+NQPu50uE6fgaVCEtY30BCZvEbwkCnQhL2EOAIGAY866Q65OEQ57HfY73xjiMowUiFrbLGSsjBHaInPymUlFjhWlJIpzNKZARaQvMghDMisrqk/PGtZrITCrTqg6aZvp2DoV/XQ6EQjsfc9L2ioSAAWA4yBxhDFQPDSU3gdvA5eB69j7eyemm7WWWAxL1iETsCgjkXXTx1Nddoa4CuI4Cn2XRdTFSX6RKvqjl0+S8tTctb8U6tLrlHW5dfucMtQ64DbbvCJhkcGkK/MzP4Jy5BTuzopzblZTukm993US3D4wt4fYl4PTPHoTZ3hp3Z5auLz857S8ahPqBcdrujykg4zRGE/RDN4GTtZJMtOYPqQYPHt8e0544ce33Pzhi4qNTRFdh2jsFNTpQpdxrfUX/5b5fCWH9MvCn2KbAToQU7LJv+5ZgaC5/NEwKH0tzc7C5UzekCoBO/3W4BuelOCjxIPVqi9llt/GwwVJQMb9/4dRt86HY4jFQnai/ErZ3MSH0FvzOPvM9ZqO3jmv9bLf076NwzdUujvCwAA";
+const LRT_SEQ = {map:new Map(), ready:false};
+function lrtSeqLoad(txt){
+  /* 每行格式：路線|方向|站1,站2,站3…
+     注意方向與站清單之間也是 |，不能直接 slice(1) 拿站清單，
+     否則方向碼會被併進第一個站號（例如 I|LR100）。 */
+  for(const line of txt.split('\n')){
+    const p = line.split('|');
+    if(p.length < 3) continue;
+    const key = p[0] + '|' + p[1];
+    const stops = p.slice(2).join('|').split(',').map(s=>s.trim()).filter(Boolean);
+    if(key && stops.length >= 2) LRT_SEQ.map.set(key, stops);
+  }
+  LRT_SEQ.ready = true;
+}
+/* 取路線的站序（0.7KB 的內建資料；bound 常為空，所以兩個方向都試） */
+function lrtSeqOf(route){
+  if(!LRT_SEQ.ready) return [];
+  return LRT_SEQ.map.get(String(route)+'|O')
+      || LRT_SEQ.map.get(String(route)+'|I')
+      || [];
+}
+
 /* 某個輕鐵站有哪些路線（由內建路線表反查） */
 function lrtRoutesAt(id){
   const arr = D.LRT.routesAtStop?.get(String(id)) || [];
@@ -2764,7 +2821,11 @@ async function openRoute(co, route){
     <span class="badge ${CO_CLS[co]}">${esc(route)}</span> 路線資料</h2><span class="spin"></span></div></div>`;
   box.scrollIntoView({behavior:'smooth',block:'start'});
   try{
-    if(co==='KMB')  await renderKmbRoute(co, route);
+    if(co==='LRT'){
+      if(!D.LRT.ready) await loadLrt();
+      await renderLrtRoute(co, route);
+    }
+    else if(co==='KMB')  await renderKmbRoute(co, route);
     else if(co==='CTB')  await renderCtbRoute(co, route);
     else if(co==='NLB')  await renderNlbRoute(co, route);
     else if(co==='GMB')  await renderGmbRoute(co, route);
@@ -3458,6 +3519,144 @@ const DIAG = [
      診斷時逐一嘗試，並回報哪一種有資料 */
   ['輕鐵到站',   'LRT',  ['001','1','10','920']],
 ];
+/* ============================================================
+   資料校驗：車站上的路線是否正確、座標是否合理、站序是否可展開。
+   這些問題不會讓程式崩潰，但會讓功能「靜靜地不好用」——
+   例如某站的索引缺了兩條路線，就永遠查不到那兩條的到站時間，
+   畫面上看起來只是「那條路線沒車」，很難察覺是資料錯了。
+   這裡全部在本地檢查（零請求），最後一項才實際打 API 抽樣比對。
+   ============================================================ */
+const HK_BOUNDS = {laMin:22.14, laMax:22.59, loMin:113.80, loMax:114.48};
+function auditOperator(co){
+  const d = D[co] || {};
+  const stops = d.stop || [];
+  const routes = d.route || [];
+  const r = {co, stops:stops.length, routes:routes.length, issues:[], ok:true};
+
+  // 1) 座標：超出香港範圍 → 「附近」與點對點規劃都會算錯
+  let badGeo = 0, noGeo = 0;
+  for(const s of stops){
+    if(!isFinite(s.lat) || !isFinite(s.lng)){ noGeo++; continue; }
+    if(s.lat < HK_BOUNDS.laMin || s.lat > HK_BOUNDS.laMax ||
+       s.lng < HK_BOUNDS.loMin || s.lng > HK_BOUNDS.loMax) badGeo++;
+  }
+  if(badGeo) { r.issues.push(`${badGeo} 站座標超出香港範圍`); r.ok = false; }
+  if(noGeo)  { r.issues.push(`${noGeo} 站沒有座標`); }
+
+  // 2) 空站名
+  const noName = stops.filter(s=>!s.tc || !String(s.tc).trim()).length;
+  if(noName){ r.issues.push(`${noName} 站沒有站名`); r.ok = false; }
+
+  // 3) 重複站號：會讓索引彼此覆蓋，該站的資料不完整
+  if(stops.length){
+    const seen = new Set(); let dup = 0;
+    for(const s of stops){ const k = String(s.id); if(seen.has(k)) dup++; else seen.add(k); }
+    if(dup){ r.issues.push(`${dup} 個重複站號`); r.ok = false; }
+  }
+
+  // 4) 車站→路線索引：這是「車站上有哪些路線」的依據
+  const atStop = d.routesAtStop;
+  let withRt = 0, totalRt = 0, noRt = 0;
+  if(atStop && atStop.size){
+    for(const [, arr] of atStop){ if(arr && arr.length){ withRt++; totalRt += arr.length; } else noRt++; }
+    r.idxStops  = withRt;
+    r.avgRoutes = withRt ? +(totalRt/withRt).toFixed(1) : 0;
+    // 有車站卻幾乎都查不到路線 → 索引可能沒建立
+    if(stops.length && withRt === 0){ r.issues.push('查不到任何車站的路線'); r.ok = false; }
+    else if(stops.length && withRt < stops.length*0.5){
+      r.issues.push(`僅 ${withRt}/${stops.length} 站查得到路線`);
+      r.ok = false;
+    }
+  } else if(stops.length){
+    r.issues.push('沒有建立「車站→路線」索引'); r.ok = false;
+  }
+
+  // 5) 路線缺終點：會顯示成「往 —」
+  //    輕鐵屬環狀／雙向，本來就沒有單一終點（目的地由到站 API 提供），不列入
+  if(routes.length && co!=='LRT' && co!=='MTR'){
+    const noDest = routes.filter(x=>!x.dest && !x.orig).length;
+    if(noDest) r.issues.push(`${noDest}/${routes.length} 條路線缺終點（可能顯示「往 —」）`);
+  }
+
+  // 6) 路線缺站序：點路線進去看不到站序表。
+  //    站序不一定存在 route 物件裡——港鐵在 MTR_LINES、
+  //    輕鐵／嶼巴可由「車站→路線」索引反查，所以要逐一確認而不是只看 stops 欄位。
+  if(routes.length){
+    // 先建立「路線 → 站數」的反查表
+    const routeStops = new Map();
+    if(atStop) for(const [, arr] of atStop)
+      for(const x of (arr||[])){
+        const k = String(x.route);
+        if(!routeStops.has(k)) routeStops.set(k, new Set());
+        if(x.seq !== undefined || x.stop) routeStops.get(k).add(String(x.seq ?? x.stop));
+      }
+    let noSeq = 0;
+    for(const x of routes){
+      const key = String(x.route);
+      let has = false;
+      if(x.stops && x.stops.length) has = true;
+      else if(d.routeMap?.get(key)?.stops?.length) has = true;
+      else if((routeStops.get(key)?.size || 0) >= 2) has = true;
+      else if(co === 'MTR'){
+        // 港鐵：站序在 MTR_LINES
+        const ln = (typeof MTR_LINES!=='undefined' ? MTR_LINES : []).find(l=>l.code===key);
+        if(ln && ln.st && ln.st.length) has = true;
+      }
+      if(!has) noSeq++;
+    }
+    if(noSeq && co!=='FERRY') r.issues.push(`${noSeq}/${routes.length} 條路線沒有站序資料`);
+  }
+
+  // 7) 路線號重複（同一路線號有多個方向是正常的，只看是否異常多）
+  if(routes.length){
+    const m = new Map();
+    for(const x of routes) m.set(String(x.route), (m.get(String(x.route))||0)+1);
+    const dupR = [...m.values()].filter(v=>v>8).length;
+    if(dupR) r.issues.push(`${dupR} 個路線號有超過 8 個方向（可能重複）`);
+  }
+  return r;
+}
+function auditAll(){
+  return ['KMB','CTB','GMB','NLB','MTRB','MTR','LRT','FERRY'].map(auditOperator);
+}
+
+/* 抽樣比對：拿官方到站 API 實際查得到哪些路線，
+   與「內建索引說這站有哪些路線」比對。
+   兩邊不符就是資料有問題：
+     - 索引有、API 沒有 → 可能已停駛或改道（多半無害）
+     - API 有、索引沒有 → 那條路線永遠查不到，屬真正的缺漏 */
+async function auditSample(co){
+  const d = D[co] || {};
+  const out = {co, sampled:0, agree:0, onlyIdx:[], onlyApi:[], err:null};
+  if(!d.routesAtStop || !d.routesAtStop.size) { out.err = '無索引'; return out; }
+  // 挑有較多路線的站來測（資料豐富才比得出東西）
+  const cands = [...d.routesAtStop.entries()]
+    .filter(([,arr])=>arr && arr.length>=3)
+    .sort((a,b)=>b[1].length-a[1].length)
+    .slice(0, 10);
+  if(!cands.length){ out.err = '找不到適合的站'; return out; }
+  // 隨機取 2 個，避免每次都打同一站
+  const picks = cands.sort(()=>Math.random()-0.5).slice(0, 2);
+  for(const [sid, arr] of picks){
+    let rows = [];
+    try{ rows = await fetchEtaRows(co, sid); }
+    catch(e){ out.err = out.err || e.message; continue; }
+    out.sampled++;
+    const idxSet = new Set(arr.map(x=>String(x.route)));
+    const apiSet = new Set((rows||[]).map(x=>String(x.route)).filter(Boolean));
+    if(!apiSet.size) continue;
+    let same = 0;
+    for(const r of apiSet) if(idxSet.has(r)) same++;
+    out.agree += same / apiSet.size;
+    for(const r of idxSet) if(!apiSet.has(r)) out.onlyIdx.push(String(r));
+    for(const r of apiSet) if(!idxSet.has(r)) out.onlyApi.push(String(r));
+  }
+  out.onlyIdx = [...new Set(out.onlyIdx)].slice(0,8);
+  out.onlyApi = [...new Set(out.onlyApi)].slice(0,8);
+  if(out.sampled) out.agree = Math.round(out.agree / out.sampled * 100);
+  return out;
+}
+
 /* 資料筆數（陣列長度／物件鍵數） */
 function diagCount(j){
   if(!j || typeof j!=='object') return 0;
@@ -3481,6 +3680,50 @@ function diagEtaCount(j){
   }
   return n;
 }
+function auditRow(a){
+  const name = CO_NAME[a.co] || a.co;
+  if(!a.stops && !a.routes)
+    return `<tr><td>${esc(name)} <span class="tiny muted">未載入</span></td>
+      <td class="bad">✗ 無資料</td></tr>`;
+  const stat = a.ok ? 'ok' : 'bad';
+  const txt  = a.ok ? '✓ 正常' : '⚠ 有問題';
+  const detail = a.issues.length ? esc(a.issues.join('；'))
+               : `${a.idxStops? a.idxStops+' 站有路線資料':'—'}${a.avgRoutes? ` · 平均 ${a.avgRoutes} 條/站`:''}`;
+  return `<tr><td>${esc(name)} <span class="tiny muted">${a.stops} 站 · ${a.routes} 路線</span></td>
+    <td class="${stat}">${txt} <span class="tiny muted">${detail}</span></td></tr>`;
+}
+
+/* 抽查：實際打 API 比對索引 */
+$('#auditBtn').onclick = async ()=>{
+  const t = $('#diagTable');
+  const btn = $('#auditBtn');
+  btn.disabled = true;
+  t.innerHTML = '<tr><td colspan="2"><span class="spin"></span> 正在抽查（每個營辦商取 2 站，需連網）…</td></tr>';
+  const cos = ['KMB','CTB','GMB','NLB','MTRB','MTR','LRT'];
+  const rows = ['<tr><td colspan="2" class="tiny muted" style="padding-top:8px">索引正確性抽查</td></tr>'];
+  let bad = 0;
+  for(const co of cos){
+    const a = await auditSample(co).catch(()=>({co, err:'例外', sampled:0}));
+    const name = CO_NAME[co] || co;
+    if(!a.sampled){
+      rows.push(`<tr><td>${esc(name)}</td><td class="warn">— 略過 <span class="tiny muted">${esc(a.err||'無法抽查')}</span></td></tr>`);
+    } else if(a.onlyApi.length){
+      bad++;
+      rows.push(`<tr><td>${esc(name)} <span class="tiny muted">抽查 ${a.sampled} 站 · 吻合 ${a.agree}%</span></td>
+        <td class="bad">✗ 索引缺 ${a.onlyApi.length} 條 <span class="tiny muted">${esc(a.onlyApi.join('、'))}</span></td></tr>`);
+    } else {
+      rows.push(`<tr><td>${esc(name)} <span class="tiny muted">抽查 ${a.sampled} 站</span></td>
+        <td class="ok">✓ 吻合 ${a.agree}% ${a.onlyIdx.length?`<span class="tiny muted">（索引多出：${esc(a.onlyIdx.join('、'))}）</span>`:''}</td></tr>`);
+    }
+    t.innerHTML = rows.join('');
+  }
+  rows.push(`<tr><td colspan="2" class="tiny muted" style="padding-top:8px">${
+    bad ? `有 ${bad} 家索引與官方資料不符，缺漏的路線會查不到到站時間。`
+        : '各家索引與官方資料大致相符。'}</td></tr>`);
+  t.innerHTML = rows.join('');
+  btn.disabled = false;
+};
+
 function embRow(name, key, embedded){
   const d = D[key] || {};
   const ns = (d.stop||[]).length, nr = (d.route||[]).length;
@@ -3548,13 +3791,23 @@ $('#diagBtn').onclick = async ()=>{
       <td class="${ok?'ok':'bad'}">${ok?'✓ 正常':'✗ 異常'} <span class="tiny muted">${esc(note)}</span></td></tr>`);
     t.innerHTML = rows.join('');
   }
+  // ③ 資料校驗（純本地、零請求）
+  rows.push('<tr><td colspan="2" class="tiny muted" style="padding-top:12px">資料校驗（本地檢查，不需連網）</td></tr>');
+  const aud = auditAll();
+  let audBad = 0;
+  for(const a of aud){ rows.push(auditRow(a)); if(!a.ok) audBad++; }
+  t.innerHTML = rows.join('');
+
   const tail = vitalOk
     ? `<span class="ok">${vitalOk} 個營辦商的實時到站可用${vitalBad?`，${vitalBad} 個失敗`:''}。</span>`
     : `<span class="bad">實時到站全部無法連上（可能為 CORS 或網路問題）。</span>`;
   $('#diagSummary').innerHTML = `目前使用：<b>${esc(LAST_PROXY)}</b>　（失敗時會自動切換備援通道）<br>${tail}
+    ${audBad? `<span class="bad">資料校驗發現 ${audBad} 家有問題（見下方）。</span>`
+             : '<span class="ok">資料校驗全部通過。</span>'}
     <div class="tiny muted" style="margin-top:4px">
     車站與路線已改為 GitHub 開放資料內建，不需要連網；上方「實時到站」才是需要連網的部分。
-    若整排失敗且錯誤含 CORS，請到「設定」切換代理通道。</div>`;
+    若整排失敗且錯誤含 CORS，請到「設定」切換代理通道。<br>
+    想確認「某站列出的路線是否正確」，可按「抽查索引正確性」實際比對官方資料。</div>`;
 };
 $('#reloadBtn').onclick = async ()=>{ await DB.clear(); location.reload(); };
 $('#clearBtn').onclick = async ()=>{ await DB.clear(); localStorage.clear(); location.reload(); };
@@ -3652,6 +3905,12 @@ Promise.resolve(loadNlbEmbedded()).catch(()=>{});
 // 九巴班次表：到站 API 掛掉時的備援（非同步，不阻塞主流程）
 (async()=>{ try{ const t = await gunzipB64(EMB_KMB_FREQ); if(t) kmbFreqLoad(t); }catch(e){} })();
 (async()=>{ try{ const t = await gunzipB64(EMB_KMB_JT);   if(t) kmbJtLoad(t);   }catch(e){} })();
+let _lrtSeqP = null;
+function lrtSeqEnsure(){
+  if(LRT_SEQ.ready) return Promise.resolve(true);
+  if(!_lrtSeqP) _lrtSeqP = gunzipB64(EMB_LRT_SEQ).then(t=>{ if(t) lrtSeqLoad(t); }).catch(()=>{});
+  return _lrtSeqP;
+}
 needBusData();
 onLoad(()=>{
   renderFavs();
