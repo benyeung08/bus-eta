@@ -217,8 +217,10 @@ const EP = {
   ctbStop :'https://rt.data.gov.hk/v2/transport/citybus/stop',
   ctbRS   :(r,d)=>`https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/${encodeURIComponent(r)}/${d}`,
   ctbEta  :(s,r)=>`https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/${s}/${encodeURIComponent(r)}`,
-  ctbStopRoute:[ (s)=>`https://rt.data.gov.hk/v1.1/transport/batch/stoproute/CTB/${s}`,
-                 (s)=>`https://rt.data.gov.hk/v2/transport/citybus/stop-route/CTB/${s}` ],
+  /* v1.1 的 batch 系列官方已於 2023 年底停用，改以 v2 優先嘗試。
+     （城巴車站路線主要來源已是內建索引，此處僅為備援） */
+  ctbStopRoute:[ (s)=>`https://rt.data.gov.hk/v2/transport/citybus/stop-route/CTB/${s}`,
+                 (s)=>`https://rt.data.gov.hk/v1.1/transport/batch/stoproute/CTB/${s}` ],
 
   nlbRoute:'https://rt.data.gov.hk/v2/transport/nlb/route.php?action=list',
   nlbRS   :(id)=>`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=list&routeId=${id}`,
@@ -229,9 +231,10 @@ const EP = {
   gmbRS   :(id)=>`https://data.etagmb.gov.hk/route-stop/${id}`,
   gmbRS2  :(id,seq)=>`https://data.etagmb.gov.hk/route-stop/${id}/${seq}`,
   gmbEta  :(r,s)=>`https://data.etagmb.gov.hk/eta/route-stop/${r}/${s}`,
-  // 「個別小巴站的路線」正確端點是 /stop-route/（/stop/ 只回傳該站基本資料）
-  gmbStopRoute:[ (s)=>`https://data.etagmb.gov.hk/stop-route/${s}`,
-                 (s)=>`https://data.etagmb.gov.hk/stop/${s}` ],
+  /* 「個別小巴站的路線」正確端點是 /stop-route/。
+     原本還列了 /stop/ 當備援，但那個只回傳該站基本資料、不含路線，
+     查詢會拿到無關內容（甚至被誤當成路線清單），已移除。 */
+  gmbStopRoute:[ (s)=>`https://data.etagmb.gov.hk/stop-route/${s}` ],
   // 官方只有「路線＋站」的到站端點（hkbus/hk-bus-eta 用法），沒有整站批次端點
   gmbEtaAlts:(r,s)=>[`https://data.etagmb.gov.hk/eta/route-stop/${r}/${s}`],
 
@@ -1036,15 +1039,35 @@ function ferryNextSailings(pierId, limit=4){
   for(const [op, route, orig, dest, pierIds, freq] of FERRY_ROUTES){
     const at = pierIds.indexOf(pierId);
     if(at < 0) continue;
-    // 選出適用於今天的時刻表：假期優先取高位版本，平日取基本版
-    let best = null, bestK = -1;
-    for(const k of Object.keys(freq)){
-      const ki = +k, dayMask = ki & 127, v = ki >> 7;
-      if(!(dayMask & mask)) continue;
-      if(bestK < 0){ best = freq[k]; bestK = v; continue; }
-      if(isHol ? v > bestK : v < bestK){ best = freq[k]; bestK = v; }
+    /* 適用於今天的時刻表。
+       服務日編碼：低 7 位元為星期遮罩，位元順序即 Date.getDay()
+       （0=週日 →64，1=週一 →1 … 6=週六 →32），已對照 hkbus 的
+       serviceDayMap 全部 511 個鍵驗證無誤。
+
+       這裡取「所有符合的班次表聯集」，而不是只挑一份：
+       同一路線常有多份班次表同時符合今天（例如長洲線 287 只有 1 班 1630、
+       319 則涵蓋全日 43 班），只挑第一份會把整天班次都丟掉，
+       使用者看到「今天只有一班船」。
+
+       假日則改用週日班次表（hkbus 亦是如此：serviceDayMap[key][0]==="1"
+       代表假日／週日班次）；若沒有週日版就退回平日表。 */
+    const keys = Object.keys(freq).filter(k=>{
+      const dayMask = +k & 127;
+      return (dayMask & mask) !== 0;
+    });
+    let use = keys;
+    if(isHol){
+      const hol = keys.filter(k=>((+k & 127) & 64) !== 0);   // 含週日＝假日班次
+      if(hol.length) use = hol;
     }
-    if(!best || !best.length) continue;
+    if(!use.length) continue;
+    const best = [];
+    for(const k of use){
+      const v = freq[k];
+      if(Array.isArray(v)) best.push(...v);
+      else if(v && typeof v==='object') best.push(...Object.keys(v));
+    }
+    if(!best.length) continue;
     for(const t of best){
       const m = /^(\d{2})(\d{2})$/.exec(String(t));
       if(!m) continue;
@@ -1055,8 +1078,14 @@ function ferryNextSailings(pierId, limit=4){
       out.push({route, op, dest, orig, dep:String(t), min: mins - hhmm});
     }
   }
-  out.sort((a,b)=> (a.min<0?a.min+1440:a.min) - (b.min<0?b.min+1440:b.min));
-  return out.slice(0, limit);
+  /* 已開出的班次要過濾掉，不能留著顯示「已過站」。
+     原本只是把負值在排序時加 1440（擠到最後），但回傳的 min 仍是負的，
+     結果末班船開出後，畫面只會出現一排「已過站」，看不到下一班。 */
+  const upcoming = out.filter(x=>x.min >= 0).sort((a,b)=>a.min-b.min);
+  if(upcoming.length) return upcoming.slice(0, limit);
+  // 今天已收船 → 顯示明天同一班（時刻表多為每日，故加一天）
+  return out.map(x=>Object.assign({}, x, {min:x.min+1440, tmr:true}))
+            .sort((a,b)=>a.min-b.min).slice(0, limit);
 }
 /* ---------- 輕鐵 ----------
    座標與站號取自 hkbus 專案整理之港鐵開放資料（hk-bus-crawling，GitHub），
@@ -1456,7 +1485,8 @@ $('#stopFilters').addEventListener('click', e=>{
   if(b.id==='nearbyBtn'){ nearbyStops(); return; }
   stopFilter = b.dataset.co;
   $$('#stopFilters .chip[data-co]').forEach(c=>c.setAttribute('aria-pressed', c===b));
-  if(stopFilter==='NLB'){ waitBus().then(ensureNlbStops).then(()=>{
+  // .catch 不可省：ensureNlbStops 失敗時否則會變成未處理的 rejection
+  if(stopFilter==='NLB'){ waitBus().then(ensureNlbStops).catch(()=>{}).then(()=>{
       renderStopSearch($('#stopQ').value.trim());
       if(lastGeo && !$('#stopQ').value.trim()) renderNearby(lastGeo);
     }); return; }
@@ -1751,8 +1781,12 @@ async function renderLrtRoute(co, route){
 /* 統一渲染：同一張卡片，用 chip 切換「車站／路線」＋依營辦商篩選 */
 function nearCounts(){
   const c = {ALL:0, KMB:0, CTB:0, GMB:0, NLB:0, MTRB:0, MTR:0, LRT:0, FERRY:0};
+  /* allInRange 是原始車站（{s,d}），stops 則是合併後的群組（{co,stops}）。
+     兩種格式都要能吃，否則切換後計數會全部歸零。 */
   (nearData.allInRange || nearData.stops).forEach(x=>{
-    c.ALL++; if(c[x.s.co]!==undefined) c[x.s.co]++;
+    const co = (x.s && x.s.co) || x.co;
+    if(!co) return;
+    c.ALL++; if(c[co]!==undefined) c[co]++;
   });
   return c;
 }
@@ -1858,7 +1892,7 @@ function setNearCo(co){
   $$('#stopFilters .chip[data-co]').forEach(c=>c.setAttribute('aria-pressed', c.dataset.co===co));
   const chip = document.querySelector(`#routeFilters .chip[data-co="${co}"]`);
   if(chip){ routeFilter = co; $$('#routeFilters .chip').forEach(c=>c.setAttribute('aria-pressed', c===chip)); }
-  if(co==='NLB' && !D.NLB.stop){ waitBus().then(ensureNlbStops).then(()=>{ if(nearData.pos) renderNearby(nearData.pos); }); return; }
+  if(co==='NLB' && !D.NLB.stop){ waitBus().then(ensureNlbStops).catch(()=>{}).then(()=>{ if(nearData.pos) renderNearby(nearData.pos); }); return; }
   if(nearData.pos) renderNearby(nearData.pos);
 }
 /* 背景替附近各站補上即時分鐘數：不必點進車站才看得到還有多久。
@@ -2116,7 +2150,8 @@ async function fetchEtaRows(co, id){
   if(co==='FERRY'){
     buildFerry();
     return ferryNextSailings(id).map(s=>({route:s.route, min:s.min, iso:null,
-                                          dest:s.dest||'', rmk:(FERRY_CO[s.op]||'')+' '+(s.dep||'')}));
+                                          dest:s.dest||'',
+                                          rmk:(FERRY_CO[s.op]||'')+' '+(s.dep||'')+(s.tmr?'（明日）':'')}));
   }
   return [];
 }
@@ -2603,7 +2638,7 @@ async function kmbRouteEta(stopId, it){
     for(const c of cand){ const r = kmbEtaOf(c); if(r.min!==null){ e = r; break; }
                           if(!e) e = r; }
     if(e && e.min!==null)
-      return {route:it.route, min:e.min, iso:e.iso,
+      return {route:it.route, bound:it.bound, min:e.min, iso:e.iso,
               dest: e.dest || routeDest('KMB', it.route, it.bound) || '',
               rmk: e.rmk || ''};
   }
@@ -2661,7 +2696,8 @@ async function kmbStopEta(id){
   }
 
   return list.map(x=>{
-    const f = fixed.find(y=>String(y.route)===String(x.route));
+    const f = fixed.find(y=>String(y.route)===String(x.route)
+                          && (!x.bound || !y.bound || String(y.bound)===String(x.bound)));
     let r = Object.assign({route:x.route, dest:'', rmk:'', iso:null}, x.live||{});
     if(f && (r.min===null || r.min===undefined)) r = Object.assign({}, r, f);
     r.route = x.route;
@@ -3850,6 +3886,14 @@ $('#nearRoutesSel').onchange = e=>{
    ============================================================ */
 let activeTab = 'stop';
 function switchTab(name){
+  /* 離開分頁時停掉該分頁的輪詢。
+     原本計時器只在「再次開啟同類資料」時才被清除，
+     於是從港鐵分頁切走後，mtrTimer 仍每 20 秒打一次 API——
+     背景持續消耗流量與電量，也可能觸發限速。 */
+  if(activeTab && activeTab!==name){
+    if(activeTab==='mtr'){ clearInterval(mtrTimer); mtrTimer=null; }
+    if(activeTab==='stop'){ clearInterval(etaTimer); etaTimer=null; }
+  }
   activeTab = name;
   $$('#tabs button').forEach(b=>b.setAttribute('aria-selected', b.dataset.tab===name));
   ['stop','route','mtr','plan','more'].forEach(n=>{
@@ -3857,6 +3901,15 @@ function switchTab(name){
   });
   if(name==='plan'){ initMap(); setTimeout(()=>map&&map.invalidateSize(),80); }
   if(name==='stop' && autoNearbyPending && busDataLoaded){ autoNearbyPending=false; autoNearbyOnce(); }
+  /* 回到分頁時恢復輪詢（並順便補一次最新資料） */
+  if(name==='stop' && curStop){
+    restartEtaTimer();
+    fetchStopEta();
+  }
+  if(name==='mtr' && curMtr){
+    if(!mtrTimer) mtrTimer = setInterval(()=>fetchMtrBoard(curMtr.line, curMtr.sta), 20000);
+    fetchMtrBoard(curMtr.line, curMtr.sta);
+  }
   window.scrollTo({top:0, behavior:'smooth'});
 }
 $('#tabs').addEventListener('click', e=>{
