@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f5c8c">
+<title>香港出行易 · 交通查閱</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <div class="logo">易</div>
+    <div>
+      <div class="htitle">香港出行易 · 交通查閱</div>
+      <div class="hsub">巴士 · 港鐵 · 專線小巴 實時到站與路線搜尋</div>
+    </div>
+    <button class="iconbtn" id="themeBtn" title="深淺色">◐</button>
+  </div>
+  <nav role="tablist" id="tabs">
+    <button role="tab" data-tab="stop" aria-selected="true">到站</button>
+    <button role="tab" data-tab="route" aria-selected="false">路線</button>
+    <button role="tab" data-tab="mtr" aria-selected="false">港鐵</button>
+    <button role="tab" data-tab="plan" aria-selected="false">點對點</button>
+    <button role="tab" data-tab="more" aria-selected="false">更多</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ 到站 ============ -->
+  <section id="tab-stop">
+    <div class="card tight">
+      <input type="search" id="stopQ" placeholder="搜尋站名或站號，如：旺角站、太子、273" autocomplete="off">
+      <div class="chipbar" id="stopFilters">
+        <button class="chip" data-co="ALL" aria-pressed="true">全部</button>
+        <button class="chip" data-co="KMB" aria-pressed="false">九巴/龍運</button>
+        <button class="chip" data-co="CTB" aria-pressed="false">城巴</button>
+        <button class="chip" data-co="GMB" aria-pressed="false">專線小巴</button>
+        <button class="chip" data-co="NLB" aria-pressed="false">嶼巴</button>
+        <button class="chip" data-co="MTRB" aria-pressed="false">港鐵巴士</button>
+        <button class="chip" data-co="MTR" aria-pressed="false">港鐵</button>
+        <button class="chip" data-co="LRT" aria-pressed="false">輕鐵</button>
+        <button class="chip" data-co="FERRY" aria-pressed="false">渡輪</button>
+        <button class="chip" id="nearbyBtn" aria-pressed="false">📍 附近車站</button>
+      </div>
+    </div>
+    <div id="stopMsg"></div>
+    <div id="dataStatus" class="tiny muted" style="padding:0 4px 8px"></div>
+    <div id="nearBox"></div>
+    <div id="favBox"></div>
+    <div id="stopResults" class="list"></div>
+    <div id="stopEta"></div>
+  </section>
+
+  <!-- ============ 路線 ============ -->
+  <section id="tab-route" class="hidden">
+    <div class="card tight">
+      <input type="search" id="routeQ" placeholder="輸入路線號碼，如：1A、968、11、33" autocomplete="off">
+      <div class="chipbar" id="routeFilters">
+        <button class="chip" data-co="ALL" aria-pressed="true">全部</button>
+        <button class="chip" data-co="KMB" aria-pressed="false">九巴/龍運</button>
+        <button class="chip" data-co="CTB" aria-pressed="false">城巴</button>
+        <button class="chip" data-co="GMB" aria-pressed="false">專線小巴</button>
+        <button class="chip" data-co="NLB" aria-pressed="false">嶼巴</button>
+        <button class="chip" data-co="MTRB" aria-pressed="false">港鐵巴士</button>
+        <button class="chip" data-co="MTR" aria-pressed="false">港鐵</button>
+        <button class="chip" data-co="LRT" aria-pressed="false">輕鐵</button>
+        <button class="chip" data-co="FERRY" aria-pressed="false">渡輪</button>
+      </div>
+    </div>
+    <div id="routeMsg"></div>
+    <div id="routeResults" class="list"></div>
+    <div id="routeDetail"></div>
+  </section>
+
+  <!-- ============ 港鐵 ============ -->
+  <section id="tab-mtr" class="hidden">
+    <div class="card">
+      <h2>路線與車站 · 下一班車</h2>
+      <div class="row" style="margin-bottom:8px">
+        <select id="mtrLine"></select>
+      </div>
+      <div id="mtrStations" class="list" style="max-height:230px;overflow:auto"></div>
+    </div>
+    <div id="mtrBoard"></div>
+    <div class="card">
+      <h2>港鐵站到站行程</h2>
+      <div class="row" style="margin-bottom:6px"><select id="mtrFrom"></select></div>
+      <div class="row"><select id="mtrTo"></select></div>
+      <button class="btn block" id="mtrPlanBtn" style="margin-top:10px">搜尋車程</button>
+      <div id="mtrPlan" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- ============ 點對點 ============ -->
+  <section id="tab-plan" class="hidden">
+    <div class="card">
+      <h2>起點與終點</h2>
+      <input type="text" id="planFrom" placeholder="起點：地點、屋苑、街道或車站" autocomplete="off">
+      <div style="height:8px"></div>
+      <input type="text" id="planTo" placeholder="終點：地點、屋苑、街道或車站" autocomplete="off">
+      <div class="act" style="margin-top:10px">
+        <button class="btn sm" id="planGeo">📍 用我的位置做起點</button>
+        <button class="btn sm ghost" id="planSwap">⇅ 調換</button>
+        <button class="btn sm ghost" id="planClear">清除</button>
+      </div>
+      <div class="tiny muted" style="margin-top:8px">提示：可在下方地圖上點選設定起點／終點（第一次點為起點）。</div>
+      <div id="map"></div>
+      <div class="act" style="margin-top:10px">
+        <button class="btn block" id="planGo">搜尋路線</button>
+      </div>
+    </div>
+    <div id="planMsg"></div>
+    <div id="planResults"></div>
+  </section>
+
+  <!-- ============ 更多 ============ -->
+  <section id="tab-more" class="hidden">
+    <div class="card">
+      <h2>連線與資料源診斷</h2>
+      <div class="small muted" id="diagSummary">按下方按鈕檢查「內建資料」載入狀態，並測試各家實時到站 API。</div>
+      <div style="height:10px"></div>
+      <div class="act">
+        <button class="btn sm" id="diagBtn">開始診斷</button>
+        <button class="btn sm ghost" id="reloadBtn">重新載入路線資料</button>
+        <button class="btn sm ghost" id="clearBtn">清除快取</button>
+      </div>
+      <div class="sep"></div>
+      <table class="diag" id="diagTable"></table>
+    </div>
+    <div class="card">
+      <h2>設定</h2>
+      <div class="kv">
+        <div class="k">網路模式</div><div><select id="proxySel">
+          <option value="auto">自動（直連優先）</option>
+          <option value="0">只直連</option>
+          <option value="1">AllOrigins 代理</option>
+          <option value="2">CodeTabs 代理</option>
+          <option value="3">corsproxy.io</option>
+        </select></div>
+        <div class="k">自訂代理前綴</div><div><input type="text" id="customProxy" placeholder="例：https://my-proxy.example/?url="></div>
+        <div class="k">到站自動更新</div><div><select id="refreshSel">
+          <option value="0">關閉</option><option value="20" selected>20 秒</option><option value="40">40 秒</option><option value="60">60 秒</option>
+        </select></div>
+        <div class="k">開啟時自動定位</div><div><select id="autoNearbySel">
+          <option value="1" selected>開啟（自動顯示附近車站）</option>
+          <option value="0">關閉（只在按時才定位）</option>
+        </select></div>
+        <div class="k">附近一併顯示路線</div><div><select id="nearRoutesSel">
+          <option value="1" selected>開啟（可切換「車站／路線」）</option>
+          <option value="0">關閉（只顯示附近車站）</option>
+        </select></div>
+        <div class="k">附近車站半徑</div><div><select id="nearRadiusSel">
+          <option value="300">300 公尺</option><option value="500">500 公尺</option>
+          <option value="700" selected>700 公尺</option><option value="1000">1000 公尺</option>
+          <option value="1500">1500 公尺</option>
+        </select></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>關於</h2>
+      <div class="small muted">
+        資料來自香港政府「資料一線通」data.gov.hk 及港鐵公開資料：九巴／龍運（data.etabus.gov.hk）、城巴（rt.data.gov.hk）、新大嶼山巴士、專線小巴（data.etagmb.gov.hk）、港鐵實時列車服務資訊。地點搜尋使用 OpenStreetMap Nominatim。<br><br>
+                專線小巴、港鐵巴士、城巴、嶼巴、輕鐵、重鐵、渡輪的車站與路線採用 GitHub 開放資料（hkbus/hk-bus-crawling，源自港鐵及政府開放資料），
+        避免因官方端點的 CORS 限制而無法使用，也讓「某一站有哪些路線」不必逐站打 API；實時到站仍一律向官方 API 查詢。<br><br>
+        本站為非官方作品，僅供參考，實際班次請以營辦商公佈為準。
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  資料來源：data.gov.hk · 港鐵公開資料 · OpenStreetMap<br>
+  非官方作品 · 僅供參考
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
