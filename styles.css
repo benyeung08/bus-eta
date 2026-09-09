@@ -113,3 +113,7 @@ table.diag td{padding:6px 4px;border-bottom:1px solid var(--line)}
 .act{display:flex;gap:8px;flex-wrap:wrap}
 mark{background:#ffe9a8;color:inherit;border-radius:3px;padding:0 1px}
 :root[data-theme="dark"] mark{background:#5a4a15;color:#ffe9a8}
+
+/* 附近清單：每條路線的即時分鐘數 */
+.neta{display:inline-flex;align-items:center;gap:3px;margin-right:9px;white-space:nowrap;font-size:12px}
+.neta .eta{font-weight:600}

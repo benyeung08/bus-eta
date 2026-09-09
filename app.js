@@ -20,7 +20,7 @@ const PROXIES = [
 ];
 const SETTINGS = Object.assign({
   proxy:'auto', customProxy:'', refresh:20, theme:'auto',
-  autoNearby:1, nearRadius:700, nearRoutes:1
+  autoNearby:1, nearRadius:700, nearRoutes:1, nearEta:1
 }, JSON.parse(localStorage.getItem('hkT.set')||'{}'));
 function saveSettings(){ localStorage.setItem('hkT.set', JSON.stringify(SETTINGS)); }
 
@@ -1493,10 +1493,18 @@ $('#nearBox').addEventListener('click', e=>{
     nearView = tab.dataset.view;
     renderNearBox();
     if(nearView==='route' && nearData.routes===null) loadNearbyRoutes();
+    if(nearView==='stop' && !nearData.stops?.[0]?.eta) fillNearEtas();
     return;
   }
   const st = e.target.closest('.item[data-id]');
-  if(st){ openStopEta(st.dataset.co, st.dataset.id); return; }
+  if(st){
+    // 合併站：帶入所有月台，一次顯示各方向的班次
+    const gi = st.dataset.gidx;
+    const g = (gi!==undefined && nearData.stops[+gi]) ? nearData.stops[+gi] : null;
+    const ids = (g && g.stops.length>1) ? g.stops.map(s=>s.id) : null;
+    openStopEta(st.dataset.co, st.dataset.id, ids);
+    return;
+  }
   const it = e.target.closest('.item[data-route]'); if(!it) return;
   const co = it.dataset.co, route = it.dataset.route;
   switchTab('route');
@@ -1703,9 +1711,11 @@ function nearRouteLabel(x){
 function renderNearby(pos){
   nearbyTok++;
   const inRange = computeNearbyAll(pos.lat, pos.lng, stopFilter);
-  nearData = {pos, stops: inRange.slice(0,20), allInRange: inRange, routes:null, err:null};
+  const merged = mergeNearStops(inRange).slice(0, 20);
+  nearData = {pos, stops: merged, allInRange: inRange, routes:null, err:null};
   renderNearBox();
   loadNearbyRoutes();                     // 背景補算路線
+  fillNearEtas();                         // 背景補上各站即時分鐘數
 }
 /* 統一渲染：同一張卡片，用 chip 切換「車站／路線」＋依營辦商篩選 */
 function nearCounts(){
@@ -1716,6 +1726,37 @@ function nearCounts(){
   return c;
 }
 const CO_SHORT = {ALL:'全部', KMB:'九巴', CTB:'城巴', GMB:'小巴', NLB:'嶼巴', MTRB:'港鐵巴', MTR:'港鐵', LRT:'輕鐵', FERRY:'渡輪'};
+
+/* 附近清單會把同一個實體站拆成好幾項（119m 與 124m 都是「海麗邨巴士總站」、
+   還有三個都叫「海麗邨」），因為它們是不同方向的月台、各有自己的站號。
+   依「營辦商＋站名」合併成一項，點進去一次看全部方向的班次。 */
+function nearStopKey(s){
+  return s.co + '|' + String(s.tc||'')
+    .replace(/[（(][^）)]*[）)]/g,'')      // 去掉括號（站名後綴／方向）
+    .replace(/[\s,，、]+$/,'').trim();
+}
+function mergeNearStops(inRange){
+  const groups = new Map();
+  for(const x of inRange){
+    const k = nearStopKey(x.s);
+    let g = groups.get(k);
+    if(!g){ g = {name:x.s.tc, co:x.s.co, dist:x.d, approx:x.s.approx,
+                 stops:[x.s], dists:[x.d]}; groups.set(k, g); }
+    else {
+      if(!g.stops.some(s2=>String(s2.id)===String(x.s.id))){
+        g.stops.push(x.s); g.dists.push(x.d);
+      }
+      if(x.d < g.dist){ g.dist = x.d; g.approx = x.s.approx; }
+    }
+  }
+  return [...groups.values()].sort((a,b)=>a.dist-b.dist);
+}
+/* 站名後綴：合併後用來區分個別月台（如 SS667 / SS917） */
+function stopCodeOf(s){
+  const m = String(s.tc||'').match(/[（(]([^）)]+)[）)]\s*$/);
+  if(m) return m[1];
+  return String(s.id).slice(-5);
+}
 function renderNearBox(){
   const box = $('#nearBox'); if(!box) return;
   if($('#stopQ').value.trim()){ box.innerHTML=''; return; }     // 正在搜尋時不干擾
@@ -1744,13 +1785,17 @@ function renderNearBox(){
 
   if(view === 'stop'){
     h += nearData.stops.length
-      ? `<div class="list" style="margin-top:6px">` + nearData.stops.map(x=>{
-          const rt = stopRoutesPreview(x.s.co, x.s.id);
-          return `<div class="item" data-co="${x.s.co}" data-id="${esc(x.s.id)}">
-            <span class="badge ${CO_CLS[x.s.co]}">${fmtDistOf(x.d, x.s.approx)}</span>
+      ? `<div class="list" style="margin-top:6px">` + nearData.stops.map((g,i)=>{
+          const rt = g.stops.length===1
+            ? stopRoutesPreview(g.co, g.stops[0].id)
+            : g.stops.flatMap(s=>stopRoutesPreview(g.co, s.id));
+          const uniqRt = [...new Set(rt)].sort(routeCmp);
+          const main = g.stops[0];
+          return `<div class="item" data-co="${g.co}" data-id="${esc(main.id)}" data-gidx="${i}">
+            <span class="badge ${CO_CLS[g.co]}">${fmtDistOf(g.dist, g.approx)}</span>
             <div style="flex:1;min-width:0">
-              <div class="nm">${esc(x.s.tc)}</div>
-              <div class="sub" data-sub="${x.s.co}|${esc(x.s.id)}"${rt.length?' data-done="1"':''}>${rt.length? esc(rt.map(c=> x.s.co==='MTR' ? String(lineOf(c)?.name||c).replace(/[線綫]$/,'') : c).join(' · ')) : esc(CO_NAME[x.s.co])}</div>
+              <div class="nm">${esc(g.name)}${g.stops.length>1?` <span class="tiny muted">${g.stops.length} 個月台</span>`:''}</div>
+              <div class="sub" data-neta="${i}">${uniqRt.length? esc(uniqRt.map(c=> g.co==='MTR' ? String(lineOf(c)?.name||c).replace(/[線綫]$/,'') : c).join(' · ')) : esc(CO_NAME[g.co])}</div>
             </div><span class="muted">›</span></div>`;
         }).join('') + `</div>`
       : `<div class="empty">${R} 公尺內找不到車站。<br>可到「更多 → 設定」把半徑調大。</div>`;
@@ -1785,6 +1830,51 @@ function setNearCo(co){
   if(co==='NLB' && !D.NLB.stop){ waitBus().then(ensureNlbStops).then(()=>{ if(nearData.pos) renderNearby(nearData.pos); }); return; }
   if(nearData.pos) renderNearby(nearData.pos);
 }
+/* 背景替附近各站補上即時分鐘數：不必點進車站才看得到還有多久。
+   限最近的 8 個站、每站最多顯示 6 條路線，並用 token 避免舊結果蓋掉新畫面。 */
+let nearEtaTok = 0;
+async function fillNearEtas(){
+  if(nearView!=='stop' || !nearData.stops || !nearData.stops.length) return;
+  if(SETTINGS.nearEta === 0 || SETTINGS.nearEta === '0') return;   // 可在設定關閉（省流量）
+  const myTok = ++nearEtaTok;
+  const groups = nearData.stops.slice(0, 8);
+  await pool(groups, 3, async (g, gi)=>{
+    let rows = [];
+    for(const s of g.stops.slice(0, 3)){
+      try{
+        const r = await fetchEtaRows(g.co, s.id);
+        for(const x of r) rows.push(Object.assign({_stop:s}, x));
+      }catch(e){}
+    }
+    if(myTok !== nearEtaTok) return;
+    // 同一路線＋目的地只留最快一班，並標註來自哪個月台
+    const best = new Map();
+    for(const r of rows){
+      const k = String(r.route)+'|'+(r.dest||'');
+      const cur = best.get(k);
+      if(!cur || ((r.min ?? 9999) < (cur.min ?? 9999))) best.set(k, r);
+    }
+    const list = [...best.values()]
+      .sort((a,b)=>(a.min ?? 9999)-(b.min ?? 9999))
+      .slice(0, 6);
+    g.eta = list;
+    const el = document.querySelector(`#nearBox [data-neta="${gi}"]`);
+    if(el) el.innerHTML = nearEtaHtml(list, g);
+  });
+}
+function nearEtaHtml(list, g){
+  if(!list || !list.length) return '<span class="tiny muted">暫無班次</span>';
+  const multi = g.stops.length > 1;
+  return list.map(r=>{
+    const m = r.min;
+    const t = (m===null||m===undefined) ? '<span class="tiny muted">—</span>'
+            : (m<=0 ? '<span class="eta soon">將到</span>'
+                    : `<span class="eta ${m<=5?'soon':''}">${m}分</span>`);
+    const code = multi ? `<span class="tiny muted">${esc(stopCodeOf(r._stop))}</span>` : '';
+    return `<span class="neta">${esc(r.route)} ${code} ${t}</span>`;
+  }).join(' ');
+}
+
 /* 背景計算附近路線；算完只在仍停留於路線檢視時更新畫面 */
 async function loadNearbyRoutes(){
   if(!nearRoutesOn() || !nearData.pos) return;
@@ -1960,8 +2050,8 @@ function waitBus(){
 
 /* ---- 到站時間板 ---- */
 let etaTimer = null, curStop = null, mtrTimer = null, curMtr = null;
-async function openStopEta(co, id){
-  curStop = {co, id};
+async function openStopEta(co, id, ids){
+  curStop = {co, id, ids: ids && ids.length ? ids : null};
   if(co==='NLB' && !D.NLB.stop) await ensureNlbStops();
   if(co==='MTRB' && !D.MTRB.ready) await loadMtrBus();
   if(co==='LRT' && !D.LRT.ready) await loadLrt();
@@ -1969,47 +2059,75 @@ async function openStopEta(co, id){
   const box = $('#stopEta');
   const name = (D[co]?.stopById?.get(id) || {}).tc || id;
   box.innerHTML = `<div class="card"><div class="spread"><h2 style="margin:0">
-      <span class="badge ${CO_CLS[co]}">${esc(co)}</span> ${esc(name)}</h2>
+      <span class="badge ${CO_CLS[co]}">${esc(co)}</span> ${esc(titleName)}${multi?` <span class="tiny muted">${ids.length} 個月台</span>`:''}</h2>
       <span class="spin"></span></div><div class="small muted" style="margin-top:6px">正在讀取實時到站…</div></div>`;
   box.scrollIntoView({behavior:'smooth', block:'start'});
   await fetchStopEta();
   restartEtaTimer();
 }
+/* 純資料版：只取到站列，不碰畫面。附近清單的即時分鐘數與合併站都用它。 */
+async function fetchEtaRows(co, id){
+  if(co==='KMB')  return await kmbStopEta(id);
+  if(co==='CTB')  return await ctbStopEta(id);
+  if(co==='GMB')  return await gmbStopEta(id);
+  if(co==='NLB')  return await nlbStopEta(id);
+  if(co==='MTRB'){ if(!D.MTRB.ready) await loadMtrBus(); return await mtrBusStopEta(id); }
+  if(co==='MTR')  return await mtrStationEta(id);
+  if(co==='LRT'){
+    if(!D.LRT.ready) await loadLrt();
+    let r = await lrtStopEta(id);
+    if(!r.length){
+      const rt = lrtRoutesAt(String(id));
+      if(rt.length) r = rt.map(x=>({route:x, min:null, iso:null, dest:'', rmk:'實時到站暫時無法取得'}));
+    }
+    return r;
+  }
+  if(co==='FERRY'){
+    buildFerry();
+    return ferryNextSailings(id).map(s=>({route:s.route, min:s.min, iso:null,
+                                          dest:s.dest||'', rmk:(FERRY_CO[s.op]||'')+' '+(s.dep||'')}));
+  }
+  return [];
+}
+
 async function fetchStopEta(){
   if(!curStop) return;
   if(document.hidden) return;        // 背景分頁不進行自動更新
   const {co, id} = curStop;
   const box = $('#stopEta');
   const name = (D[co]?.stopById?.get(id) || {}).tc || id;
+  const ids = curStop.ids && curStop.ids.length ? curStop.ids : [id];
+  const multi = ids.length > 1;
+  const titleName = multi ? name.replace(/[（(][^）)]*[）)]\s*$/,'').trim() || name : name;
   let rows = [], err = null;
   etaReset();
   try{
-    if(co==='KMB'){
-      rows = await kmbStopEta(id);
-    } else if(co==='CTB'){
-      rows = await ctbStopEta(id);
-    } else if(co==='GMB'){
-      rows = await gmbStopEta(id);
-    } else if(co==='NLB'){
-      rows = await nlbStopEta(id);
-    } else if(co==='MTRB'){
-      if(!D.MTRB.ready) await loadMtrBus();
-      rows = await mtrBusStopEta(id);
-    } else if(co==='MTR'){
-      rows = await mtrStationEta(id);
-    } else if(co==='LRT'){
-      if(!D.LRT.ready) await loadLrt();
-      rows = await lrtStopEta(id);
-      /* 輕鐵實時到站端點不穩，查不到時退回「此站途經路線」——
-         至少讓使用者知道這裡有哪些線，而不是只看到一片空白。 */
-      if(!rows.length){
-        const st = (D.LRT.stopById?.get(String(id)) || {});
-        const rt = lrtRoutesAt(String(id));
-        if(rt.length) rows = rt.map(r=>({route:r, min:null, iso:null, dest:'', rmk:'實時到站暫時無法取得'}));
+    if(!multi){
+      rows = await fetchEtaRows(co, id);
+    } else {
+      /* 合併站：一次查所有月台，各班次標註從哪個月台開出
+         （同一站名可能有去程／回程兩個方向） */
+      const got = await pool(ids, 3, async sid=>{
+        try{
+          const r = await fetchEtaRows(co, sid);
+          const nm = (D[co]?.stopById?.get(String(sid)) || {}).tc || sid;
+          return (r||[]).map(x=>Object.assign({_stop:sid, _stopName:nm}, x));
+        }catch(e){ return []; }
+      });
+      rows = got.flat();
+      // 同一路線＋目的地只留最快一班
+      const best = new Map();
+      for(const r of rows){
+        const k = String(r.route)+'|'+(r.dest||'');
+        const c = best.get(k);
+        if(!c || ((r.min ?? 9999) < (c.min ?? 9999))) best.set(k, r);
       }
-    } else if(co==='FERRY'){
-      rows = ferryNextSailings(id).map(s=>({route:s.route, min:s.min, iso:null,
-                                            dest:s.dest||'', rmk:(FERRY_CO[s.op]||'')+' '+(s.dep||'')}));
+      rows = [...best.values()];
+      rows.forEach(r=>{
+        if(r._stop && !r._via){
+          r._via = (D[co]?.stopById?.get(String(r._stop)) || {}).tc || '';
+        }
+      });
     }
   }catch(e){ err = e; }
   if(err){
@@ -2056,6 +2174,7 @@ async function fetchStopEta(){
         <span class="badge ${CO_CLS[co]}">${esc(r.route)}</span>
         <div style="flex:1;min-width:0">
           <div class="small">往 ${esc(r.dest||'—')}</div>
+          ${r._via?`<div class="tiny muted">${esc(r._via)}</div>`:''}
           ${r.rmk?`<div class="tiny muted">${esc(r.rmk)}</div>`:''}
         </div>
         ${etaHtml(r.min, r.iso, r.sched)}
@@ -3447,6 +3566,12 @@ $('#customProxy').onchange = e=>{ SETTINGS.customProxy=e.target.value.trim(); sa
 $('#refreshSel').onchange = e=>{ SETTINGS.refresh=+e.target.value; saveSettings(); restartEtaTimer(); };
 $('#autoNearbySel').value = String(SETTINGS.autoNearby ?? 1);
 $('#nearRadiusSel').value = String(SETTINGS.nearRadius ?? 700);
+const nes = $('#nearEtaSel');
+if(nes){
+  nes.value = String(SETTINGS.nearEta ?? 1);
+  nes.onchange = e=>{ SETTINGS.nearEta = +e.target.value; saveSettings();
+                      if(SETTINGS.nearEta) fillNearEtas(); else renderNearBox(); };
+}
 $('#autoNearbySel').onchange = e=>{
   SETTINGS.autoNearby = +e.target.value; saveSettings();
   if(SETTINGS.autoNearby && !geoDenied()) autoNearbyOnce();
